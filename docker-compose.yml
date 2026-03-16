@@ -23,6 +23,7 @@ services:
       - HTTP_ADDR=:8081
       - APP_ENV=development
       - LIGHTPANDA_CDP_URL=ws://localhost:9222
+      - GEMINI_API_KEY=${SCRAPER_GEMINI_API_KEY:-${GOOGLE_API_KEY:-}}
     env_file:
       - path: ./apps/scraper/.env.example
         required: true
@@ -52,6 +53,10 @@ services:
       - REDIS_ADDR=redis:6379
       - GOLEM_TRACE_DIR=/data/tmp/tests
       - DEMO_TARGET_URL=http://demo-target:4000
+      - GOLEM_RETRY_MAX=${GOLEM_RETRY_MAX:-5}
+      - GOLEM_RETRY_BASE_DELAY_MS=${GOLEM_RETRY_BASE_DELAY_MS:-2000}
+      - GOLEM_RETRY_MAX_DELAY_MS=${GOLEM_RETRY_MAX_DELAY_MS:-30000}
+      - GOOGLE_API_KEY_BACKUP=${GOOGLE_API_KEY_BACKUP:-}
     env_file:
       - path: .env.example
         required: true
