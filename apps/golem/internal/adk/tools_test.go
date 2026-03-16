@@ -58,15 +58,15 @@ func TestNewSupacrawlTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSupacrawlTools() error: %v", err)
 	}
-	if len(tools) != 3 {
-		t.Errorf("expected 3 tools, got %d", len(tools))
+	if len(tools) != 4 {
+		t.Errorf("expected 4 tools, got %d", len(tools))
 	}
 
 	names := make(map[string]bool)
 	for _, tool := range tools {
 		names[tool.Name()] = true
 	}
-	for _, expected := range []string{"browse", "screenshot", "click"} {
+	for _, expected := range []string{"browse", "screenshot", "click", "find_hidden"} {
 		if !names[expected] {
 			t.Errorf("missing tool %q", expected)
 		}

@@ -68,6 +68,7 @@ The agent has these tools registered via `functiontool.New`:
 | `browse` | Scrape a URL, get markdown + links + metadata | `GET /v1/scrape` |
 | `screenshot` | Take a screenshot, return image URL | `POST + GET /v1/screenshots` |
 | `click` | Click a CSS selector, screenshot + scrape the result | screenshot + scrape |
+| `find_hidden` | Scan HTML for hidden elements, debug attrs, route leaks | `GET /v1/scrape` (include_html) |
 | `payload` | Generate security testing payloads by category | built-in |
 
 Tool registration is graceful: if `SUPACRAWL_API_URL` is not set or the scraper is unreachable, the agent starts with `echo` and `payload` tools only and logs a warning.
@@ -287,6 +288,14 @@ Every PR body must include a test plan section:
 - [x] pre-commit hooks pass
 - [ ] E2E smoke test (if applicable, with output path)
 ```
+
+If any E2E tests were run (level 3), the PR description MUST include:
+- The command used to run the test
+- Output file path (saved to `tmp/tests/`)
+- Summary of what was tested (target URL, tools exercised, findings)
+- Pass/fail result with any errors encountered
+
+This ensures human reviewers can verify E2E claims independently.
 
 ## doc map
 
