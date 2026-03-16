@@ -169,6 +169,8 @@ GitHub Actions (push to main)
 | `DEPLOY_USER` | SSH user for deployments |
 | `DEPLOY_SSH_PRIVATE_KEY` | Ed25519 deploy key |
 | `GOOGLE_API_KEY` | Gemini API key |
+| `DOMAIN` | Domain for HTTPS (e.g. `golem.example.com`) |
+| `ACME_EMAIL` | Email for Let's Encrypt certs |
 
 ### First-time setup
 

@@ -154,6 +154,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Ensure app directory exists
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          script: mkdir -p ~/golem
+
       - name: Copy compose file to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -170,13 +178,14 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           script: |
-            mkdir -p ~/golem
             cat > ~/golem/.env.prod << 'ENVEOF'
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
             DEFAULT_LLM_MODEL=gemini-3-flash-preview
             GOLEM_LOG_LEVEL=info
             GOLEM_TIMEOUT_SECONDS=120
             GOLEM_THINKING_LEVEL=medium
+            DOMAIN=${{ secrets.DOMAIN }}
+            ACME_EMAIL=${{ secrets.ACME_EMAIL }}
             ENVEOF
             chmod 600 ~/golem/.env.prod
 

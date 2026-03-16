@@ -1,4 +1,29 @@
 services:
+  traefik:
+    image: traefik:v3.3
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   redis:
     image: redis:7-alpine
     volumes:
@@ -49,6 +74,7 @@ services:
       - GOLEM_LOG_LEVEL=${GOLEM_LOG_LEVEL:-info}
       - GOLEM_TIMEOUT_SECONDS=${GOLEM_TIMEOUT_SECONDS:-120}
       - GOLEM_THINKING_LEVEL=${GOLEM_THINKING_LEVEL:-medium}
+      - GOLEM_TRACE_FILE=/data/traces/otel_spans.json
     depends_on:
       redis:
         condition: service_healthy
@@ -56,20 +82,33 @@ services:
         condition: service_healthy
     volumes:
       - trace-data:/data/traces
+      - screenshot-data:/data/screenshots
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   observer:
     image: ${OBSERVER_IMAGE:-golem-observer:latest}
-    ports:
-      - "${OBSERVER_PORT:-3000}:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.observer.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.observer.entrypoints=websecure"
+      - "traefik.http.routers.observer.tls.certresolver=letsencrypt"
+      - "traefik.http.services.observer.loadbalancer.server.port=3000"
     volumes:
       - trace-data:/data/tmp/tests:ro
+      - screenshot-data:/data/tmp/screenshots:ro
     environment:
       - TRACE_DIR=/data/tmp/tests
       - SCREENSHOT_DIR=/data/tmp/screenshots
       - RUNNER_ENABLED=false
     depends_on:
-      - golem
+      golem:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
@@ -81,3 +120,5 @@ services:
 volumes:
   redis-data:
   trace-data:
+  screenshot-data:
+  letsencrypt:
