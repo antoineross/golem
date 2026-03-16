@@ -214,7 +214,7 @@ Services:
 Development:
   lint               Run linters (go vet)
   test               Run Go unit tests
-  e2e [name]         Run E2E test harness (thinking, agent, level0, level1a, level1b, level2)
+  e2e [name]         Run E2E test harness (thinking, agent, level0, level1a, level1b, level2, level3)
   env list           Show env configuration status
   help               Show this help
 
@@ -651,9 +651,17 @@ cmd_e2e() {
       log_info "running level 2 E2E (spatial reasoning / modal obstruction, requires scraper + demo-target)"
       run_harness "level2" "${log_file}" "${trace_file}" "${prompt}"
       ;;
+    level3)
+      local demo_url="${DEMO_TARGET_URL:-http://host.docker.internal:4000}"
+      local log_file="${out_dir}/level3_e2e.log"
+      local trace_file="${out_dir}/level3_otel_spans.json"
+      local prompt="You are a security auditor investigating ${demo_url} for data exposure vulnerabilities. Browse the homepage and use find_hidden to scan for leaked config, API keys, and debug attributes. Form hypotheses about debug endpoints. Use api_call to test discovered endpoints with any credentials found (e.g., set API key as X-Debug-Key header). Follow leads from responses. Produce a structured vulnerability report with severity, evidence, and exploit chain."
+      log_info "running level 3 E2E (config leak to data exfiltration, requires scraper + demo-target)"
+      run_harness "level3" "${log_file}" "${trace_file}" "${prompt}"
+      ;;
     *)
       log_err "unknown E2E harness: ${harness}"
-      echo "Available: thinking, agent, level0, level1a, level1b, level2"
+      echo "Available: thinking, agent, level0, level1a, level1b, level2, level3"
       exit 1
       ;;
   esac

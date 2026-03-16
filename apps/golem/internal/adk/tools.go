@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -14,6 +17,23 @@ import (
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
+
+func buildAllowedHosts() map[string]bool {
+	hosts := map[string]bool{
+		"demo-target":          true,
+		"host.docker.internal": true,
+		"localhost":            true,
+	}
+	if extra := os.Getenv("GOLEM_ALLOWED_HOSTS"); extra != "" {
+		for _, h := range strings.Split(extra, ",") {
+			h = strings.TrimSpace(h)
+			if h != "" {
+				hosts[h] = true
+			}
+		}
+	}
+	return hosts
+}
 
 type echoArgs struct {
 	Message string `json:"message" jsonschema:"The message to echo back"`
@@ -302,10 +322,15 @@ type apiCallResult struct {
 	URL        string `json:"url"`
 	StatusCode int    `json:"status_code"`
 	Body       string `json:"body"`
+	Truncated  bool   `json:"truncated,omitempty"`
 }
+
+const apiCallMaxBody = 32 * 1024
 
 // NewAPICallTool creates a tool for making direct HTTP API requests with custom headers.
 // Used when the agent discovers API endpoints and needs to test them with credentials or tokens.
+// Restricts requests to http/https schemes and blocks private/loopback IPs to prevent SSRF.
+// GOLEM_ALLOWED_HOSTS (comma-separated) bypasses the SSRF check for known targets (e.g. demo-target).
 func NewAPICallTool(guard ...*ToolGuard) (tool.Tool, error) {
 	var g *ToolGuard
 	if len(guard) > 0 {
@@ -313,12 +338,35 @@ func NewAPICallTool(guard ...*ToolGuard) (tool.Tool, error) {
 	}
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 
+	allowedHosts := buildAllowedHosts()
+
 	apiCallFn := func(tc tool.Context, args apiCallArgs) (apiCallResult, error) {
 		if g != nil {
 			if warn, err := g.RecordCall(); err != nil {
 				return apiCallResult{}, err
 			} else if warn != "" {
 				slog.Warn(warn, "tool", "api_call")
+			}
+		}
+
+		parsedURL, err := url.Parse(args.URL)
+		if err != nil {
+			return apiCallResult{}, fmt.Errorf("api_call: invalid URL: %w", err)
+		}
+		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+			return apiCallResult{}, fmt.Errorf("api_call: unsupported scheme: %q", parsedURL.Scheme)
+		}
+
+		hostname := parsedURL.Hostname()
+		if !allowedHosts[hostname] {
+			ips, lookupErr := net.LookupIP(hostname)
+			if lookupErr != nil {
+				return apiCallResult{}, fmt.Errorf("api_call: DNS lookup failed for %q: %w", hostname, lookupErr)
+			}
+			for _, ip := range ips {
+				if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+					return apiCallResult{}, fmt.Errorf("api_call: requests to private/loopback IP (%s) are blocked", ip)
+				}
 			}
 		}
 
@@ -350,9 +398,14 @@ func NewAPICallTool(guard ...*ToolGuard) (tool.Tool, error) {
 		}
 		defer resp.Body.Close()
 
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 32*1024))
+		body, err := io.ReadAll(io.LimitReader(resp.Body, apiCallMaxBody+1))
 		if err != nil {
 			return apiCallResult{}, fmt.Errorf("api_call read response: %w", err)
+		}
+
+		truncated := len(body) > apiCallMaxBody
+		if truncated {
+			body = append(body[:apiCallMaxBody], []byte("\n... [truncated]")...)
 		}
 
 		if err := stateAppendString(tc.State(), StateKeyVisitedURLs, args.URL); err != nil {
@@ -363,6 +416,7 @@ func NewAPICallTool(guard ...*ToolGuard) (tool.Tool, error) {
 			URL:        args.URL,
 			StatusCode: resp.StatusCode,
 			Body:       string(body),
+			Truncated:  truncated,
 		}, nil
 	}
 
@@ -409,13 +463,6 @@ func NewSupacrawlTools(client *supacrawl.Client) ([]tool.Tool, error) {
 		errs = append(errs, fmt.Sprintf("find_hidden: %v", err))
 	} else {
 		tools = append(tools, findHidden)
-	}
-
-	apiCall, err := NewAPICallTool(guard)
-	if err != nil {
-		errs = append(errs, fmt.Sprintf("api_call: %v", err))
-	} else {
-		tools = append(tools, apiCall)
 	}
 
 	if len(errs) > 0 {
