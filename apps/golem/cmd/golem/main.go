@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"google.golang.org/adk/agent"
+	"google.golang.org/adk/artifact"
 	"google.golang.org/adk/session"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
@@ -35,13 +36,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	auditor, err := golemAdk.NewAuditor(llm, tools)
+	callbacks := golemAdk.NewCallbacks(logger)
+
+	auditor, err := golemAdk.NewAuditor(llm, tools,
+		golemAdk.WithBeforeAgent(callbacks.BeforeAgent),
+		golemAdk.WithAfterAgent(callbacks.AfterAgent),
+		golemAdk.WithBeforeModel(callbacks.BeforeModel),
+		golemAdk.WithAfterModel(callbacks.AfterModel),
+	)
 	if err != nil {
 		slog.Error("failed to create auditor agent", "error", err)
 		os.Exit(1)
 	}
 
-	r, sessionSvc, err := golemAdk.NewRunner("golem", auditor)
+	artifactSvc := artifact.InMemoryService()
+
+	r, sessionSvc, err := golemAdk.NewRunner("golem", auditor, golemAdk.RunnerConfig{
+		ArtifactService: artifactSvc,
+	})
 	if err != nil {
 		slog.Error("failed to create runner", "error", err)
 		os.Exit(1)

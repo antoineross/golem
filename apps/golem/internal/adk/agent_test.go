@@ -88,3 +88,56 @@ func TestPromptSections_NonEmpty(t *testing.T) {
 		}
 	}
 }
+
+func TestComposeWithState_NoState(t *testing.T) {
+	base := prompts.Compose()
+	withState := prompts.ComposeWithState(prompts.StateContext{})
+	if base != withState {
+		t.Error("ComposeWithState with empty context should equal Compose()")
+	}
+}
+
+func TestComposeWithState_WithTargetURL(t *testing.T) {
+	result := prompts.ComposeWithState(prompts.StateContext{
+		TargetURL: "https://example.com",
+	})
+	if !strings.Contains(result, "Session Context") {
+		t.Error("expected Session Context section")
+	}
+	if !strings.Contains(result, "https://example.com") {
+		t.Error("expected target URL in context")
+	}
+}
+
+func TestComposeWithState_WithFindings(t *testing.T) {
+	result := prompts.ComposeWithState(prompts.StateContext{
+		TargetURL:     "https://example.com",
+		CurrentStep:   "RECONNAISSANCE",
+		VisitedURLs:   []string{"https://example.com", "https://example.com/about"},
+		FindingsCount: 3,
+	})
+	if !strings.Contains(result, "Findings so far: 3") {
+		t.Error("expected findings count")
+	}
+	if !strings.Contains(result, "Pages already visited (2)") {
+		t.Error("expected visited URL count")
+	}
+	if !strings.Contains(result, "RECONNAISSANCE") {
+		t.Error("expected current step")
+	}
+}
+
+func TestStateKeys_Defined(t *testing.T) {
+	keys := []string{
+		StateKeyTargetURL,
+		StateKeyCurrentStep,
+		StateKeyVisitedURLs,
+		StateKeyFindings,
+		StateKeyScreenshots,
+	}
+	for _, key := range keys {
+		if key == "" {
+			t.Error("state key should not be empty")
+		}
+	}
+}

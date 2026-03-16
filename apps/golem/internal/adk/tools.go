@@ -2,6 +2,7 @@ package adk
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"golem/internal/supacrawl"
@@ -58,6 +59,10 @@ func NewBrowseTool(client *supacrawl.Client) (tool.Tool, error) {
 		})
 		if err != nil {
 			return browseResult{}, fmt.Errorf("browse %s: %w", args.URL, err)
+		}
+
+		if err := stateAppendString(tc.State(), StateKeyVisitedURLs, args.URL); err != nil {
+			slog.Warn("failed to update visited_urls state", "url", args.URL, "error", err)
 		}
 
 		links := resp.Links
@@ -127,6 +132,10 @@ func NewScreenshotTool(client *supacrawl.Client) (tool.Tool, error) {
 			return screenshotResult{}, fmt.Errorf("screenshot %s: %w", args.URL, err)
 		}
 
+		if err := stateAppendString(tc.State(), StateKeyScreenshots, resp.Screenshot); err != nil {
+			slog.Warn("failed to update screenshots state", "url", args.URL, "error", err)
+		}
+
 		width, height, format := 0, 0, "png"
 		loadTime := 0
 		if resp.Metadata != nil {
@@ -183,6 +192,13 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 		})
 		if err != nil {
 			return clickResult{}, fmt.Errorf("click %s on %s: %w", args.Selector, args.URL, err)
+		}
+
+		if err := stateAppendString(tc.State(), StateKeyVisitedURLs, args.URL); err != nil {
+			slog.Warn("failed to update visited_urls state", "url", args.URL, "error", err)
+		}
+		if err := stateAppendString(tc.State(), StateKeyScreenshots, screenshotResp.Screenshot); err != nil {
+			slog.Warn("failed to update screenshots state", "url", args.URL, "error", err)
 		}
 
 		scrapeResp, scrapeErr := client.Scrape(tc, args.URL, supacrawl.ScrapeOptions{
