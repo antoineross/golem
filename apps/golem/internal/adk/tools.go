@@ -260,6 +260,13 @@ func NewSupacrawlTools(client *supacrawl.Client) ([]tool.Tool, error) {
 		tools = append(tools, click)
 	}
 
+	findHidden, err := NewFindHiddenTool(client)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("find_hidden: %v", err))
+	} else {
+		tools = append(tools, findHidden)
+	}
+
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("failed to create tools: %s", strings.Join(errs, "; "))
 	}
