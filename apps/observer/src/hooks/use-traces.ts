@@ -20,6 +20,7 @@ export function useTraceList() {
         setLoading(false);
       })
       .catch((err) => {
+        console.error("failed to fetch trace list:", err);
         setError(err.message);
         setLoading(false);
       });
@@ -54,6 +55,7 @@ export function useTrace(filePath: string | null) {
         }
         setTrace(parsed);
       } catch (err: unknown) {
+        console.error(`failed to load trace ${path}:`, err);
         setError(err instanceof Error ? err.message : "unknown error");
       } finally {
         setLoading(false);
@@ -69,18 +71,22 @@ export function useTrace(filePath: string | null) {
   return { trace, raw, loading, error, reload: () => filePath && loadTrace(filePath) };
 }
 
-export function useTraceSSE(onTrace: (trace: TraceSummary, raw: string) => void) {
+export function useTraceSSE(
+  onTrace: (trace: TraceSummary, raw: string) => void,
+  enabled = true
+) {
   useEffect(() => {
+    if (!enabled) return;
     const es = new EventSource(`${API_BASE}/api/traces/stream`);
     es.addEventListener("trace", (e) => {
       const raw = e.data;
       try {
         const parsed = parseTrace(raw);
         onTrace(parsed, raw);
-      } catch {
-        // skip parse errors on partial data
+      } catch (e) {
+        console.warn("failed to parse SSE trace data:", e);
       }
     });
     return () => es.close();
-  }, [onTrace]);
+  }, [onTrace, enabled]);
 }

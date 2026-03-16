@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { Play, Pause, RotateCcw } from "lucide-react";
+import { PlayIcon, PauseIcon, ArrowPathIcon } from "@heroicons/react/20/solid";
 import type { TimelineEvent } from "@/types/trace";
 
 interface ReplayControlsProps {
@@ -105,7 +105,7 @@ export function ReplayControls({ events, onVisibleEvents }: ReplayControlsProps)
             />
           }
         >
-          {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+          {playing ? <PauseIcon className="h-3 w-3" /> : <PlayIcon className="h-3 w-3" />}
         </TooltipTrigger>
         <TooltipContent>{playing ? "Pause" : "Play"}</TooltipContent>
       </Tooltip>
@@ -121,7 +121,7 @@ export function ReplayControls({ events, onVisibleEvents }: ReplayControlsProps)
             />
           }
         >
-          <RotateCcw className="h-3 w-3" />
+          <ArrowPathIcon className="h-3 w-3" />
         </TooltipTrigger>
         <TooltipContent>Reset to start</TooltipContent>
       </Tooltip>

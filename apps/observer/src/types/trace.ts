@@ -94,7 +94,10 @@ export interface TraceSummary {
 
 export interface TraceFile {
   name: string;
+  display_name: string;
   path: string;
   modified: string;
   source: "otel" | "thinking";
+  harness: string;
+  has_events: boolean;
 }

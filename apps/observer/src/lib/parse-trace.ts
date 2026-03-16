@@ -25,8 +25,29 @@ function parseOtelSpans(raw: string): OtelSpan[] {
   const spans: OtelSpan[] = [];
   let depth = 0;
   let current = "";
+  let inString = false;
+  let escaped = false;
 
   for (const char of raw) {
+    if (escaped) {
+      if (depth > 0) current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\" && inString) {
+      if (depth > 0) current += char;
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      if (depth > 0) current += char;
+      continue;
+    }
+    if (inString) {
+      if (depth > 0) current += char;
+      continue;
+    }
     if (char === "{") {
       if (depth === 0) current = "";
       depth++;

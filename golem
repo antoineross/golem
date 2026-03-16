@@ -175,7 +175,16 @@ dc() {
 }
 
 dc_env() {
-  docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" "$@"
+  local env_args=()
+  local src
+  for src in "${ENV_SOURCES[@]}"; do
+    env_args+=(--env-file "${src}")
+  done
+  if [[ ${#env_args[@]} -gt 0 ]]; then
+    docker compose -f "${COMPOSE_FILE}" "${env_args[@]}" -p "${PROJECT_NAME}" "$@"
+  else
+    dc "$@"
+  fi
 }
 
 # =============================================================================
@@ -199,6 +208,7 @@ Services:
   status             Show status of all services and health checks
   logs [service]     Tail logs (all or specific: golem, scraper, observer, redis)
   reset [--confirm]  Stop services and wipe all data (volumes, tmp/)
+  clean [--confirm]  Remove stopped containers, dangling images, build cache
   build              Build all Docker images
 
 Development:
@@ -216,6 +226,7 @@ Examples:
   ./golem status             # Check service health
   ./golem e2e level0         # Run level 0 E2E (no scraper needed)
   ./golem reset --confirm    # Wipe and restart fresh
+  ./golem clean --confirm    # Remove dangling images and build cache
 
 EOF
 }
@@ -382,8 +393,8 @@ cmd_reset() {
   log_info "stopping services and removing volumes..."
   dc down -v --remove-orphans
 
-  log_info "clearing tmp/ artifacts..."
-  rm -rf "${REPO_ROOT}/tmp/tests/"* "${REPO_ROOT}/tmp/logs/"* "${REPO_ROOT}/tmp/screenshots/"*
+  log_info "clearing tmp/ artifacts (tests, logs, screenshots)..."
+  rm -rf "${REPO_ROOT}/tmp/tests/"* "${REPO_ROOT}/tmp/logs/"* "${REPO_ROOT}/tmp/screenshots/"* 2>/dev/null || true
 
   log_ok "reset complete"
   log_info "run './golem start' to start fresh"
@@ -397,6 +408,65 @@ cmd_build() {
   log_info "building docker images..."
   dc_env build
   log_ok "build complete"
+}
+
+cmd_clean() {
+  check_docker
+
+  local confirm=""
+  for arg in "$@"; do
+    case "$arg" in
+      --confirm|-y) confirm="yes" ;;
+    esac
+  done
+
+  if [[ "${confirm}" != "yes" ]]; then
+    log_warn "this will remove:"
+    echo "  - All stopped golem containers"
+    echo "  - Dangling golem images"
+    echo "  - Build cache for golem services"
+    echo ""
+    echo "Run with --confirm to proceed:"
+    echo "  ./golem clean --confirm"
+    exit 1
+  fi
+
+  log_info "removing stopped containers..."
+  dc down --remove-orphans 2>/dev/null || true
+
+  log_info "pruning dangling images..."
+  docker image prune -f --filter "label=com.docker.compose.project=${PROJECT_NAME}" 2>/dev/null || true
+
+  log_info "pruning build cache..."
+  docker builder prune -f --filter "unused-for=24h" 2>/dev/null || true
+
+  log_ok "clean complete"
+}
+
+cleanup_old_runs() {
+  local harness="$1"
+  local keep="${2:-5}"
+  local dir="${REPO_ROOT}/tmp/tests/${harness}"
+
+  if [[ ! -d "${dir}" ]]; then
+    return 0
+  fi
+
+  local files
+  files=$(find "${dir}" -maxdepth 1 -name "*.json" -not -name "*_events.jsonl" | sort)
+  local count
+  count=$(echo "${files}" | grep -c . 2>/dev/null || echo 0)
+
+  if [[ ${count} -gt ${keep} ]]; then
+    local to_delete=$((count - keep))
+    log_info "cleaning up ${to_delete} old ${harness} run(s), keeping ${keep}..."
+    echo "${files}" | head -n "${to_delete}" | while read -r f; do
+      if [[ -n "${f}" && -f "${f}" ]]; then
+        local events_file="${f%.json}_events.jsonl"
+        rm -f "${f}" "${events_file}"
+      fi
+    done
+  fi
 }
 
 cmd_lint() {
@@ -440,6 +510,8 @@ cmd_e2e() {
   local harness="${1:-thinking}"
   local out_dir="${REPO_ROOT}/tmp/tests/${harness}"
   mkdir -p "${out_dir}"
+
+  cleanup_old_runs "${harness}" 5
 
   case "${harness}" in
     thinking)
@@ -557,6 +629,7 @@ main() {
     status) cmd_status ;;
     logs) cmd_logs "$@" ;;
     reset) cmd_reset "$@" ;;
+    clean) cmd_clean "$@" ;;
     build) cmd_build ;;
     lint) cmd_lint ;;
     test) cmd_test ;;

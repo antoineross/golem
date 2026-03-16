@@ -16,7 +16,10 @@ export function ScreenshotGallery() {
         setScreenshots(data.screenshots ?? []);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e) => {
+        console.warn("failed to fetch screenshots:", e);
+        setLoading(false);
+      });
   }, []);
 
   if (loading) {

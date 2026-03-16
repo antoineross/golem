@@ -24,7 +24,8 @@ app.use("/*", cors());
 function readTraceFile(filePath: string): string | null {
   try {
     return fs.readFileSync(filePath, "utf-8");
-  } catch {
+  } catch (e) {
+    console.warn(`failed to read trace file ${filePath}:`, e);
     return null;
   }
 }
@@ -64,9 +65,32 @@ function detectSource(filePath: string): "otel" | "thinking" {
 
 interface TraceFileMeta {
   name: string;
+  display_name: string;
   path: string;
   modified: string;
   source: "otel" | "thinking";
+  harness: string;
+  has_events: boolean;
+}
+
+function deriveDisplayName(fileName: string, filePath: string, modified: string): string {
+  const lower = filePath.toLowerCase();
+  let harness = "trace";
+  if (lower.includes("level0")) harness = "Level 0";
+  else if (lower.includes("/thinking/")) harness = "Thinking";
+  else if (lower.includes("/agent/")) harness = "Agent";
+
+  const date = new Date(modified);
+  const time = date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${harness} run -- ${time}`;
+}
+
+function deriveHarness(filePath: string): string {
+  const lower = filePath.toLowerCase();
+  if (lower.includes("level0")) return "level0";
+  if (lower.includes("/thinking/")) return "thinking";
+  if (lower.includes("/agent/")) return "agent";
+  return "trace";
 }
 
 function findTraceFiles(dir: string): TraceFileMeta[] {
@@ -76,7 +100,8 @@ function findTraceFiles(dir: string): TraceFileMeta[] {
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
+    } catch (e) {
+      console.warn(`failed to read directory ${current}:`, e);
       return;
     }
     for (const entry of entries) {
@@ -85,11 +110,17 @@ function findTraceFiles(dir: string): TraceFileMeta[] {
         walk(full);
       } else if (entry.name.endsWith(".json")) {
         const stat = fs.statSync(full);
+        const modified = stat.mtime.toISOString();
+        const eventsPath = eventsPathForTrace(full);
+        const hasEvents = fs.existsSync(eventsPath);
         results.push({
           name: entry.name,
+          display_name: deriveDisplayName(entry.name, full, modified),
           path: full,
-          modified: stat.mtime.toISOString(),
+          modified,
           source: detectSource(full),
+          harness: deriveHarness(full),
+          has_events: hasEvents,
         });
       }
     }
@@ -115,7 +146,8 @@ app.get("/api/traces/:file{.+}", (c) => {
   const file = c.req.param("file");
   const filePath = path.resolve(file);
 
-  if (!filePath.includes(path.resolve(TRACE_DIR)) && filePath !== path.resolve(TRACE_FILE)) {
+  const resolvedTraceDir = path.resolve(TRACE_DIR);
+  if (!filePath.startsWith(resolvedTraceDir + path.sep) && filePath !== path.resolve(TRACE_FILE)) {
     return c.json({ error: "access denied" }, 403);
   }
 
@@ -144,8 +176,10 @@ app.get("/api/traces/stream", (c) => {
             await stream.writeSSE({ data: content, event: "trace" });
           }
         }
-      } catch {
-        // File might not exist yet
+      } catch (e: unknown) {
+        if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code !== "ENOENT") {
+          console.warn(`trace file stat error:`, e);
+        }
       }
       await stream.sleep(2000);
     }
@@ -159,14 +193,19 @@ app.get("/api/screenshots", (c) => {
       /\.(png|jpg|jpeg|gif|webp)$/i.test(e)
     );
     return c.json({ screenshots: images });
-  } catch {
+  } catch (e) {
+    console.warn(`failed to read screenshot directory:`, e);
     return c.json({ screenshots: [] });
   }
 });
 
 app.get("/api/screenshots/:name", (c) => {
   const name = c.req.param("name");
-  const filePath = path.join(SCREENSHOT_DIR, name);
+  const filePath = path.resolve(SCREENSHOT_DIR, name);
+
+  if (!filePath.startsWith(path.resolve(SCREENSHOT_DIR) + path.sep)) {
+    return c.json({ error: "access denied" }, 403);
+  }
 
   if (!fs.existsSync(filePath)) {
     return c.json({ error: "not found" }, 404);
@@ -188,14 +227,31 @@ app.get("/api/screenshots/:name", (c) => {
 
 // --- Agent Runner ---
 
-const SCENARIOS: Record<string, { name: string; harness: string; prompt?: string }> = {
+interface ScenarioConfig {
+  name: string;
+  harness: string;
+  description: string;
+  prompt: string;
+  tools: string[];
+  requires_scraper: boolean;
+}
+
+const SCENARIOS: Record<string, ScenarioConfig> = {
   level0: {
     name: "Level 0: Echo + Payload",
     harness: "level0",
+    description: "Validates the agent tool-call loop works. The agent echoes a message and lists available security payload categories. No external services required.",
+    prompt: "Echo 'hello' to verify tool calling works, then list the available payload categories.",
+    tools: ["echo", "payload"],
+    requires_scraper: false,
   },
   agent: {
-    name: "Full Agent (default prompt)",
+    name: "Full Agent Run",
     harness: "agent",
+    description: "Runs the full security auditor agent against the default target. Uses browse, screenshot, click, and find_hidden tools via the Supacrawl scraper.",
+    prompt: "Browse https://example.com and describe what you see.",
+    tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
+    requires_scraper: true,
   },
 };
 
@@ -234,9 +290,8 @@ app.post("/api/agent/run", async (c) => {
   if (customPrompt) args.push(customPrompt);
 
   const traceDir = path.join(REPO_ROOT, "tmp", "tests", harness);
-  const traceFile = harness === "level0"
-    ? path.join(traceDir, "level0_otel_spans.json")
-    : path.join(traceDir, "agent_otel_spans.json");
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const traceFile = path.join(traceDir, `${harness}_${ts}_otel_spans.json`);
   agentTraceFile = traceFile;
 
   const child = spawn(golemScript, args, {

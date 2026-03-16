@@ -4,8 +4,8 @@ import { TracePicker } from "./trace-picker";
 import type { TraceFile } from "@/types/trace";
 
 const files: TraceFile[] = [
-  { name: "agent_otel_spans.json", path: "/tmp/tests/agent/agent_otel_spans.json", modified: "2026-03-16T10:00:00Z", source: "otel" },
-  { name: "medium_trace.json", path: "/tmp/tests/thinking/medium_trace.json", modified: "2026-03-15T10:00:00Z", source: "thinking" },
+  { name: "agent_otel_spans.json", display_name: "Agent run -- 10:00", path: "/tmp/tests/agent/agent_otel_spans.json", modified: "2026-03-16T10:00:00Z", source: "otel", harness: "agent", has_events: false },
+  { name: "medium_trace.json", display_name: "Thinking run -- 10:00", path: "/tmp/tests/thinking/medium_trace.json", modified: "2026-03-15T10:00:00Z", source: "thinking", harness: "thinking", has_events: false },
 ];
 
 describe("TracePicker", () => {

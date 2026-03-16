@@ -137,6 +137,8 @@ cp .env.example .env.local    # fill in API keys
 
 Never bypass the wrapper with raw docker compose commands. The wrapper handles env file selection (`--env-file`), project naming, and consistent behavior.
 
+**Process management**: Always use `./golem stop` to shut down services. Never use `kill -9`, `lsof | xargs kill`, or similar signals to stop golem or its Docker services -- this can corrupt containers and break other running Docker services (e.g. nanowhale). The `./golem stop` command runs `docker compose down` which cleanly shuts down only golem's containers.
+
 | Do this | Not this |
 |---------|----------|
 | `./golem start` | `docker compose up -d` |

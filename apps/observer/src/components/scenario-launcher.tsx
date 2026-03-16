@@ -8,7 +8,18 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { Play, Square, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  PlayIcon,
+  StopIcon,
+  ExclamationCircleIcon,
+  CheckCircleIcon,
+} from "@heroicons/react/20/solid";
 
 const API_BASE = import.meta.env.DEV ? "http://localhost:3000" : "";
 
@@ -17,7 +28,10 @@ type AgentStatus = "idle" | "running" | "complete" | "error";
 interface Scenario {
   name: string;
   harness: string;
-  prompt?: string;
+  description: string;
+  prompt: string;
+  tools: string[];
+  requires_scraper: boolean;
 }
 
 interface ScenarioLauncherProps {
@@ -98,13 +112,18 @@ export function ScenarioLauncher({ onRunStarted }: ScenarioLauncherProps) {
   };
 
   const statusIcon: Record<AgentStatus, React.ReactNode> = {
-    idle: <Square className="h-3 w-3" />,
-    running: <Loader2 className="h-3 w-3 animate-spin" />,
-    complete: <CheckCircle2 className="h-3 w-3" />,
-    error: <AlertCircle className="h-3 w-3" />,
+    idle: <StopIcon className="h-3 w-3" />,
+    running: (
+      <span className="h-3 w-3 rounded-full bg-green-400 animate-pulse inline-block" />
+    ),
+    complete: <CheckCircleIcon className="h-3 w-3" />,
+    error: <ExclamationCircleIcon className="h-3 w-3" />,
   };
 
-  const statusVariant: Record<AgentStatus, "outline" | "secondary" | "default" | "destructive"> = {
+  const statusVariant: Record<
+    AgentStatus,
+    "outline" | "secondary" | "default" | "destructive"
+  > = {
     idle: "outline",
     running: "secondary",
     complete: "default",
@@ -113,51 +132,90 @@ export function ScenarioLauncher({ onRunStarted }: ScenarioLauncherProps) {
 
   return (
     <Card>
-      <CardHeader className="p-4 pb-2">
+      <CardHeader className="p-3 pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">
-            Scenario Launcher
-          </CardTitle>
-          <Badge variant={statusVariant[status]} className="text-xs gap-1">
+          <CardTitle className="text-xs font-medium">Scenarios</CardTitle>
+          <Badge variant={statusVariant[status]} className="text-[10px] gap-1">
             {statusIcon[status]}
             <span className="capitalize">{status}</span>
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="p-4 pt-2 space-y-3">
-        <div className="flex flex-wrap gap-2">
+      <CardContent className="p-3 pt-0 space-y-2">
+        <Accordion className="space-y-1">
           {Object.entries(scenarios).map(([key, scenario]) => (
-            <Tooltip key={key}>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={status === "running"}
-                    onClick={() => runScenario(key)}
-                  />
-                }
-              >
-                <Play className="h-3 w-3 mr-1" />
-                {scenario.name}
-              </TooltipTrigger>
-              <TooltipContent>Run {scenario.harness} harness</TooltipContent>
-            </Tooltip>
+            <AccordionItem key={key} value={key} className="border-0">
+              <div className="rounded-md border border-border overflow-hidden">
+                <AccordionTrigger className="px-2.5 py-1.5 hover:no-underline text-xs">
+                  <span className="truncate">{scenario.name}</span>
+                </AccordionTrigger>
+                <AccordionContent className="px-2.5 pb-2.5">
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {scenario.description}
+                    </p>
+                    <div className="rounded bg-muted p-2">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-1">
+                        Prompt
+                      </div>
+                      <p className="text-[11px] font-mono text-foreground">
+                        {scenario.prompt}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {scenario.tools?.map((t) => (
+                        <Badge
+                          key={t}
+                          variant="outline"
+                          className="text-[9px] px-1 py-0 h-3.5"
+                        >
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                    {scenario.requires_scraper && (
+                      <p className="text-[10px] text-amber-400">
+                        Requires scraper service
+                      </p>
+                    )}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="default"
+                            size="xs"
+                            disabled={status === "running"}
+                            onClick={() => runScenario(key)}
+                            className="w-full"
+                          />
+                        }
+                      >
+                        <PlayIcon className="h-3 w-3 mr-1" />
+                        Run
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Start {scenario.harness} harness
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </AccordionContent>
+              </div>
+            </AccordionItem>
           ))}
-        </div>
+        </Accordion>
 
-        <div className="flex gap-2">
+        <div className="flex gap-1.5">
           <Input
             placeholder="Custom prompt..."
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runCustom()}
             disabled={status === "running"}
-            className="text-sm"
+            className="text-xs h-7"
           />
           <Button
             variant="outline"
-            size="sm"
+            size="xs"
             disabled={status === "running" || !customPrompt.trim()}
             onClick={runCustom}
           >
@@ -166,7 +224,7 @@ export function ScenarioLauncher({ onRunStarted }: ScenarioLauncherProps) {
         </div>
 
         {error && (
-          <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">
+          <div className="text-[10px] text-destructive bg-destructive/10 border border-destructive/20 rounded p-1.5">
             {error}
           </div>
         )}

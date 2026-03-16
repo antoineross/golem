@@ -47,13 +47,13 @@ describe("Timeline", () => {
   it("renders correct badge labels", () => {
     render(<Timeline events={events} />);
     expect(screen.getByText("Agent")).toBeInTheDocument();
-    expect(screen.getByText("LLM Call")).toBeInTheDocument();
-    expect(screen.getByText("Tool Call")).toBeInTheDocument();
+    expect(screen.getByText("LLM")).toBeInTheDocument();
+    expect(screen.getByText("Tool")).toBeInTheDocument();
   });
 
   it("shows token count for LLM events", () => {
     render(<Timeline events={events} />);
-    expect(screen.getByText("2244 tokens")).toBeInTheDocument();
+    expect(screen.getByText(/2,244\s*tok/)).toBeInTheDocument();
   });
 
   it("shows duration for events", () => {

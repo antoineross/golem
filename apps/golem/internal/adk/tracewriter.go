@@ -3,6 +3,7 @@ package adk
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -88,16 +89,21 @@ func (tw *TraceWriter) Write(event TraceEvent) {
 	}
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
-	tw.enc.Encode(event) //nolint:errcheck
+	if err := tw.enc.Encode(event); err != nil {
+		slog.Warn("trace write failed", "type", event.Type, "error", err)
+	}
 }
 
-// Close flushes and closes the underlying file.
+// Close syncs and closes the underlying file.
 func (tw *TraceWriter) Close() error {
 	if tw == nil {
 		return nil
 	}
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
+	if err := tw.file.Sync(); err != nil {
+		slog.Warn("trace file sync failed", "error", err)
+	}
 	return tw.file.Close()
 }
 

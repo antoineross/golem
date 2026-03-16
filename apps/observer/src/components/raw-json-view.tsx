@@ -18,7 +18,8 @@ export function RawJsonView({ raw }: RawJsonViewProps) {
     const parsed = JSON.parse(raw);
     formatted = JSON.stringify(parsed, null, 2);
   } catch {
-    // OTel spans are concatenated objects, not valid JSON array
+    // OTel spans are concatenated objects, not a valid JSON array -- display as-is
+    formatted = raw;
   }
 
   return (

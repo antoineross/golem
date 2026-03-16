@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,15 +8,22 @@ import {
 } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
 import { SummaryHeader } from "@/components/summary-header";
 import { Timeline } from "@/components/timeline";
 import { RawJsonView } from "@/components/raw-json-view";
-import { ScreenshotGallery } from "@/components/screenshot-gallery";
 import { ScenarioLauncher } from "@/components/scenario-launcher";
 import { ReplayControls } from "@/components/replay-controls";
 import { useTraceList, useTrace, useTraceSSE } from "@/hooks/use-traces";
 import type { TraceSummary, TimelineEvent, TraceFile } from "@/types/trace";
-import { Eye, RefreshCw, FileText, Clock } from "lucide-react";
+import {
+  EyeIcon,
+  ArrowPathIcon,
+  ClockIcon,
+  DocumentTextIcon,
+  PlayIcon,
+  SignalIcon,
+} from "@heroicons/react/20/solid";
 
 function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -28,14 +34,6 @@ function relativeTime(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
-}
-
-function parseHarness(filePath: string): string {
-  const lower = filePath.toLowerCase();
-  if (lower.includes("level0")) return "level0";
-  if (lower.includes("thinking")) return "thinking";
-  if (lower.includes("agent")) return "agent";
-  return "trace";
 }
 
 const harnessColors: Record<string, string> = {
@@ -56,52 +54,58 @@ function SidebarTraceItem({
   isSelected,
   onSelect,
 }: SidebarTraceItemProps) {
-  const harness = parseHarness(file.path);
-
   return (
     <Button
       variant="ghost"
-      className={`w-full justify-start h-auto px-3 py-2.5 text-left rounded-md ${
+      className={`w-full justify-start h-auto px-3 py-2 text-left rounded-md ${
         isSelected
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:text-foreground"
       }`}
       onClick={() => onSelect(file.path)}
     >
-      <div className="flex flex-col gap-1.5 w-full min-w-0">
+      <div className="flex flex-col gap-1 w-full min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <FileText className="h-3.5 w-3.5 shrink-0" />
-          <span className="text-sm font-medium truncate">{file.name}</span>
+          <DocumentTextIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="text-sm font-medium truncate">
+            {file.display_name || file.name}
+          </span>
         </div>
-        <div className="flex items-center gap-2 pl-5">
+        <div className="flex items-center gap-1.5 pl-5">
           <Badge
             variant="outline"
-            className={`text-[10px] px-1.5 py-0 h-4 font-normal border ${harnessColors[harness]}`}
+            className={`text-[10px] px-1.5 py-0 h-4 font-normal border ${harnessColors[file.harness] ?? harnessColors.trace}`}
           >
-            {harness}
+            {file.harness}
           </Badge>
-          <Badge
-            variant="outline"
-            className="text-[10px] px-1.5 py-0 h-4 font-normal"
-          >
-            {file.source}
-          </Badge>
+          {file.has_events && (
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 h-4 font-normal text-green-400 border-green-500/20"
+            >
+              rich
+            </Badge>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
                 <span className="text-[11px] text-muted-foreground flex items-center gap-1 ml-auto shrink-0 cursor-default" />
               }
             >
-              <Clock className="h-3 w-3" />
+              <ClockIcon className="h-3 w-3" />
               {relativeTime(file.modified)}
             </TooltipTrigger>
-            <TooltipContent>{new Date(file.modified).toLocaleString()}</TooltipContent>
+            <TooltipContent>
+              {new Date(file.modified).toLocaleString()}
+            </TooltipContent>
           </Tooltip>
         </div>
       </div>
     </Button>
   );
 }
+
+type MainView = "timeline" | "raw";
 
 export default function App() {
   const { files, loading: filesLoading } = useTraceList();
@@ -113,13 +117,14 @@ export default function App() {
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [replayMode, setReplayMode] = useState(false);
   const [replayEvents, setReplayEvents] = useState<TimelineEvent[]>([]);
+  const [mainView, setMainView] = useState<MainView>("timeline");
 
   const handleSSE = useCallback((t: TraceSummary, r: string) => {
     setLiveTrace(t);
     setLiveRaw(r);
   }, []);
 
-  useTraceSSE(liveEnabled ? handleSSE : () => {});
+  useTraceSSE(handleSSE, liveEnabled);
 
   const activeTrace = liveEnabled && liveTrace ? liveTrace : trace;
   const activeRaw = liveEnabled && liveRaw ? liveRaw : raw;
@@ -128,6 +133,7 @@ export default function App() {
     setSelectedFile(path);
     setLiveEnabled(false);
     setReplayMode(false);
+    setMainView("timeline");
   };
 
   const handleRunStarted = () => {
@@ -148,12 +154,12 @@ export default function App() {
       <header className="border-b border-border px-6 py-3 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Eye className="h-5 w-5 text-green-400" />
+            <EyeIcon className="h-5 w-5 text-green-400" />
             <h1 className="text-lg font-semibold tracking-tight">
               G.O.L.E.M. Observer
             </h1>
             <Badge variant="outline" className="text-xs">
-              v0.7.1
+              v0.7.2
             </Badge>
           </div>
           <div className="flex items-center gap-2">
@@ -171,6 +177,7 @@ export default function App() {
                   />
                 }
               >
+                <PlayIcon className="h-3.5 w-3.5" />
                 {replayMode ? "Replay On" : "Replay"}
               </TooltipTrigger>
               <TooltipContent>
@@ -192,8 +199,8 @@ export default function App() {
                   />
                 }
               >
-                <span
-                  className={`h-2 w-2 rounded-full ${liveEnabled ? "bg-green-400 animate-pulse" : "bg-muted-foreground/40"}`}
+                <SignalIcon
+                  className={`h-3.5 w-3.5 ${liveEnabled ? "text-green-400 animate-pulse" : ""}`}
                 />
                 {liveEnabled ? "Live" : "Live Off"}
               </TooltipTrigger>
@@ -213,7 +220,7 @@ export default function App() {
                   />
                 }
               >
-                <RefreshCw className="h-4 w-4" />
+                <ArrowPathIcon className="h-4 w-4" />
               </TooltipTrigger>
               <TooltipContent>Reload current trace</TooltipContent>
             </Tooltip>
@@ -229,7 +236,7 @@ export default function App() {
 
           <div className="px-3 pt-3 pb-1">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Trace Files
+              Trace History
             </span>
           </div>
 
@@ -245,7 +252,7 @@ export default function App() {
 
               {!filesLoading && files.length === 0 && (
                 <div className="text-xs text-muted-foreground text-center py-8">
-                  No trace files found
+                  No traces yet. Run a scenario to generate one.
                 </div>
               )}
 
@@ -264,7 +271,7 @@ export default function App() {
           {!filesLoading && files.length > 0 && (
             <div className="px-3 py-2 border-t border-border">
               <span className="text-[11px] text-muted-foreground">
-                {files.length} trace{files.length !== 1 ? "s" : ""}
+                {files.length} run{files.length !== 1 ? "s" : ""}
               </span>
             </div>
           )}
@@ -296,34 +303,43 @@ export default function App() {
                   />
                 )}
 
-                <Tabs defaultValue="timeline" className="w-full">
-                  <TabsList>
-                    <TabsTrigger value="timeline">Timeline</TabsTrigger>
-                    <TabsTrigger value="raw">Raw JSON</TabsTrigger>
-                    <TabsTrigger value="screenshots">Screenshots</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="timeline" className="mt-4">
-                    <Timeline events={displayEvents} />
-                  </TabsContent>
-                  <TabsContent value="raw" className="mt-4">
-                    <RawJsonView raw={activeRaw} />
-                  </TabsContent>
-                  <TabsContent value="screenshots" className="mt-4">
-                    <ScreenshotGallery />
-                  </TabsContent>
-                </Tabs>
+                <div className="flex items-center gap-1 border-b border-border pb-2">
+                  <Button
+                    variant={mainView === "timeline" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setMainView("timeline")}
+                  >
+                    Timeline
+                  </Button>
+                  <Button
+                    variant={mainView === "raw" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setMainView("raw")}
+                  >
+                    Raw JSON
+                  </Button>
+                </div>
+
+                {mainView === "timeline" && (
+                  <Timeline events={displayEvents} />
+                )}
+                {mainView === "raw" && <RawJsonView raw={activeRaw} />}
               </>
             )}
 
             {!loading && !error && !activeTrace && (
-              <div className="text-center py-16 text-muted-foreground">
-                <Eye className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p className="text-lg">Select a trace file or run a scenario</p>
-                <p className="text-sm mt-1">
-                  Pick a trace from the sidebar, or use the launcher to start an
-                  agent run
-                </p>
-              </div>
+              <Card>
+                <CardContent className="text-center py-16 text-muted-foreground">
+                  <EyeIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <p className="text-lg">
+                    Select a trace or run a scenario
+                  </p>
+                  <p className="text-sm mt-1">
+                    Pick from the sidebar, or use the launcher to start an
+                    agent run
+                  </p>
+                </CardContent>
+              </Card>
             )}
           </div>
         </main>
