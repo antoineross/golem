@@ -51,8 +51,19 @@ type browseResult struct {
 
 // NewBrowseTool creates an ADK tool that scrapes a URL via the Supacrawl API.
 // The agent sees the page as markdown + metadata, enabling DOM-level reasoning.
-func NewBrowseTool(client *supacrawl.Client) (tool.Tool, error) {
+func NewBrowseTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool, error) {
+	var g *ToolGuard
+	if len(guard) > 0 {
+		g = guard[0]
+	}
 	browseFn := func(tc tool.Context, args browseArgs) (browseResult, error) {
+		if g != nil {
+			if warn, err := g.RecordCall(); err != nil {
+				return browseResult{}, err
+			} else if warn != "" {
+				slog.Warn(warn, "tool", "browse")
+			}
+		}
 		resp, err := client.Scrape(tc, args.URL, supacrawl.ScrapeOptions{
 			Format:      "markdown",
 			IncludeHTML: args.IncludeHTML,
@@ -118,8 +129,22 @@ type screenshotResult struct {
 
 // NewScreenshotTool creates an ADK tool that takes screenshots via the Supacrawl API.
 // Returns the screenshot URL which can be fetched for multimodal analysis.
-func NewScreenshotTool(client *supacrawl.Client) (tool.Tool, error) {
+func NewScreenshotTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool, error) {
+	var g *ToolGuard
+	if len(guard) > 0 {
+		g = guard[0]
+	}
 	screenshotFn := func(tc tool.Context, args screenshotArgs) (screenshotResult, error) {
+		if g != nil {
+			if warn, err := g.RecordCall(); err != nil {
+				return screenshotResult{}, err
+			} else if warn != "" {
+				slog.Warn(warn, "tool", "screenshot")
+			}
+			if g.FailureCount("screenshot", args.URL) >= 3 {
+				return screenshotResult{}, fmt.Errorf("screenshot for %s has failed %d times, try a different approach", args.URL, g.FailureCount("screenshot", args.URL))
+			}
+		}
 		resp, err := client.Screenshot(tc, supacrawl.ScreenshotRequest{
 			URL:             args.URL,
 			FullPage:        args.FullPage,
@@ -130,6 +155,9 @@ func NewScreenshotTool(client *supacrawl.Client) (tool.Tool, error) {
 			BlockAds:        true,
 		})
 		if err != nil {
+			if g != nil {
+				g.RecordFailure("screenshot", args.URL)
+			}
 			return screenshotResult{}, fmt.Errorf("screenshot %s: %w", args.URL, err)
 		}
 
@@ -180,9 +208,22 @@ type clickResult struct {
 }
 
 // NewClickTool creates an ADK tool that clicks an element and returns the resulting state.
-// Combines click_selector with screenshot + scrape for a single "interact and observe" action.
-func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
+// Screenshot capture is best-effort: if it fails, click still returns the scraped content.
+func NewClickTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool, error) {
+	var g *ToolGuard
+	if len(guard) > 0 {
+		g = guard[0]
+	}
 	clickFn := func(tc tool.Context, args clickArgs) (clickResult, error) {
+		if g != nil {
+			if warn, err := g.RecordCall(); err != nil {
+				return clickResult{}, err
+			} else if warn != "" {
+				slog.Warn(warn, "tool", "click")
+			}
+		}
+		var screenshotURL string
+
 		screenshotResp, err := client.Screenshot(tc, supacrawl.ScreenshotRequest{
 			URL:           args.URL,
 			ClickSelector: args.Selector,
@@ -192,14 +233,17 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 			Delay:         2,
 		})
 		if err != nil {
-			return clickResult{}, fmt.Errorf("click %s on %s: %w", args.Selector, args.URL, err)
+			slog.Warn("click screenshot failed, continuing with scrape",
+				"url", args.URL, "selector", args.Selector, "error", err)
+		} else {
+			screenshotURL = screenshotResp.Screenshot
+			if err := stateAppendString(tc.State(), StateKeyScreenshots, screenshotURL); err != nil {
+				slog.Warn("failed to update screenshots state", "url", args.URL, "error", err)
+			}
 		}
 
 		if err := stateAppendString(tc.State(), StateKeyVisitedURLs, args.URL); err != nil {
 			slog.Warn("failed to update visited_urls state", "url", args.URL, "error", err)
-		}
-		if err := stateAppendString(tc.State(), StateKeyScreenshots, screenshotResp.Screenshot); err != nil {
-			slog.Warn("failed to update screenshots state", "url", args.URL, "error", err)
 		}
 
 		scrapeResp, scrapeErr := client.Scrape(tc, args.URL, supacrawl.ScrapeOptions{
@@ -220,7 +264,7 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 		return clickResult{
 			URL:           args.URL,
 			Clicked:       args.Selector,
-			ScreenshotURL: screenshotResp.Screenshot,
+			ScreenshotURL: screenshotURL,
 			Content:       content,
 		}, nil
 	}
@@ -235,25 +279,28 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 }
 
 // NewSupacrawlTools creates all Supacrawl-powered tools for the agent.
+// A shared ToolGuard enforces per-tool retry limits (3 per URL) and a
+// global step budget (50 tool calls).
 func NewSupacrawlTools(client *supacrawl.Client) ([]tool.Tool, error) {
+	guard := NewToolGuard(3, 50)
 	var tools []tool.Tool
 	var errs []string
 
-	browse, err := NewBrowseTool(client)
+	browse, err := NewBrowseTool(client, guard)
 	if err != nil {
 		errs = append(errs, fmt.Sprintf("browse: %v", err))
 	} else {
 		tools = append(tools, browse)
 	}
 
-	screenshot, err := NewScreenshotTool(client)
+	screenshot, err := NewScreenshotTool(client, guard)
 	if err != nil {
 		errs = append(errs, fmt.Sprintf("screenshot: %v", err))
 	} else {
 		tools = append(tools, screenshot)
 	}
 
-	click, err := NewClickTool(client)
+	click, err := NewClickTool(client, guard)
 	if err != nil {
 		errs = append(errs, fmt.Sprintf("click: %v", err))
 	} else {

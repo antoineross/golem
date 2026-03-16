@@ -218,6 +218,9 @@ func (c *Client) pollScreenshot(ctx context.Context, jobID string) (*ScreenshotG
 	endpoint := fmt.Sprintf("%s/v1/screenshots?%s", c.baseURL, params.Encode())
 
 	maxAttempts := 30
+	backoff := time.Second
+	const maxBackoff = 4 * time.Second
+
 	for i := 0; i < maxAttempts; i++ {
 		select {
 		case <-ctx.Done():
@@ -241,7 +244,7 @@ func (c *Client) pollScreenshot(ctx context.Context, jobID string) (*ScreenshotG
 			return nil, fmt.Errorf("read screenshot poll response: %w", err)
 		}
 
-		if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 			return nil, fmt.Errorf("screenshot poll returned %d: %s", resp.StatusCode, string(body))
 		}
 
@@ -256,7 +259,13 @@ func (c *Client) pollScreenshot(ctx context.Context, jobID string) (*ScreenshotG
 		case "failed":
 			return nil, fmt.Errorf("screenshot job failed: %s", result.Error)
 		case "processing":
-			time.Sleep(time.Second)
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff = backoff * 3 / 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
 			continue
 		default:
 			return nil, fmt.Errorf("unexpected screenshot status: %s", result.Status)
