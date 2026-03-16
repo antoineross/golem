@@ -27,10 +27,11 @@ import (
 )
 
 type Service struct {
-	log  *logger.Logger
-	cfg  config.Config
-	jobs *job.JobService
-	pool *browser.Pool
+	log    *logger.Logger
+	cfg    config.Config
+	jobs   *job.JobService
+	pool   *browser.Pool
+	engine string
 
 	supabaseClient *supabase.Client
 }
@@ -47,7 +48,12 @@ type Payload struct {
 const TaskTypeScreenshot = "screenshot:task"
 
 func New(cfg config.Config, jobs *job.JobService, pool *browser.Pool) (*Service, error) {
-	s := &Service{log: logger.New("ScreenshotService"), cfg: cfg, jobs: jobs, pool: pool}
+	engine := os.Getenv("SCREENSHOT_ENGINE")
+	if engine == "" {
+		engine = "playwright"
+	}
+	s := &Service{log: logger.New("ScreenshotService"), cfg: cfg, jobs: jobs, pool: pool, engine: engine}
+	s.log.LogInfof("Screenshot engine: %s", engine)
 
 	if cfg.SupabaseURL != "" && cfg.SupabaseServiceKey != "" {
 		client, err := supabase.NewClient(cfg.SupabaseURL, cfg.SupabaseServiceKey, nil)
@@ -101,8 +107,15 @@ type Result struct {
 }
 
 func (s *Service) take(ctx context.Context, r Request) (Result, error) {
+	if s.engine == "playwright" {
+		return s.takePlaywright(ctx, r)
+	}
+	return s.takeChromedp(ctx, r)
+}
+
+func (s *Service) takeChromedp(ctx context.Context, r Request) (Result, error) {
 	start := time.Now()
-	s.log.LogInfof("Taking screenshot of %s", r.Url)
+	s.log.LogInfof("Taking chromedp screenshot of %s", r.Url)
 
 	// Create browser context from pool
 	browserCtx, cancel := s.pool.NewContext()
