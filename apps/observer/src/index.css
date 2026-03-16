@@ -127,3 +127,59 @@
     @apply font-sans;
     }
 }
+
+/* Markdown prose styles for Streamdown/MessageResponse */
+.streamdown p {
+  margin-top: 0.6em;
+  margin-bottom: 0.6em;
+  line-height: 1.6;
+}
+
+.streamdown p:first-child { margin-top: 0; }
+.streamdown p:last-child { margin-bottom: 0; }
+
+.streamdown ul {
+  list-style-type: disc;
+  padding-left: 1.25em;
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.streamdown ol {
+  list-style-type: decimal;
+  padding-left: 1.25em;
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.streamdown li {
+  margin-top: 0.1em;
+  margin-bottom: 0.1em;
+  line-height: 1.5;
+}
+
+.streamdown li > p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.streamdown blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: var(--muted-foreground);
+}
+
+.streamdown h1, .streamdown h2, .streamdown h3 {
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.4em;
+}
+
+.streamdown pre {
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 0.75em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}

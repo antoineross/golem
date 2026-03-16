@@ -46,8 +46,15 @@ services:
     environment:
       - SUPACRAWL_API_URL=http://scraper:8081
       - REDIS_ADDR=redis:6379
+      - GOLEM_TRACE_DIR=/data/tmp/tests
+      - DEMO_TARGET_URL=http://demo-target:4000
     env_file:
-      - .env.example
+      - path: .env.example
+        required: true
+      - path: .env
+        required: false
+      - path: .env.local
+        required: false
     depends_on:
       redis:
         condition: service_healthy
@@ -56,6 +63,7 @@ services:
     volumes:
       - ./apps/golem:/app
       - golem-go-cache:/go/pkg
+      - ./tmp:/data/tmp
     restart: unless-stopped
 
   observer:
@@ -63,11 +71,15 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./tmp:/data/tmp:ro
+      - ./tmp:/data/tmp
     environment:
       - TRACE_DIR=/data/tmp/tests
       - SCREENSHOT_DIR=/data/tmp/screenshots
       - RUNNER_ENABLED=false
+      - GOLEM_API_URL=http://golem:8080
+      - DEMO_TARGET_URL=http://demo-target:4000
+    depends_on:
+      - golem
     restart: unless-stopped
 
 volumes:

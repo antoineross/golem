@@ -1,11 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent } from "@/components/ui/card";
 import { SummaryHeader } from "@/components/summary-header";
+import { EmptyState } from "@/components/empty-state";
 import { Timeline } from "@/components/timeline";
 import { StreamingTimeline } from "@/components/streaming-timeline";
 import { RawJsonView } from "@/components/raw-json-view";
@@ -21,7 +21,22 @@ type MainView = "timeline" | "raw";
 
 export default function App() {
   const { files, loading: filesLoading, refresh: refreshFiles } = useTraceList();
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  const [selectedFile, setSelectedFile] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("trace");
+  });
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedFile) {
+      url.searchParams.set("trace", selectedFile);
+    } else {
+      url.searchParams.delete("trace");
+    }
+    window.history.replaceState({}, "", url.toString());
+  }, [selectedFile]);
+
   const { trace, raw, loading, error, reload } = useTrace(selectedFile);
 
   const [liveTrace, setLiveTrace] = useState<TraceSummary | null>(null);
@@ -43,8 +58,11 @@ export default function App() {
   const handleStreamComplete = useCallback(() => {
     setStreamMode(false);
     setLiveEnabled(false);
+    if (liveTraceFile) {
+      setSelectedFile(liveTraceFile);
+    }
     refreshFiles();
-  }, [refreshFiles]);
+  }, [refreshFiles, liveTraceFile]);
 
   const { state: streamState, reset: resetStream } = useAgentStream({
     enabled: streamMode,
@@ -80,9 +98,18 @@ export default function App() {
     setReplayEvents(events);
   }, []);
 
-  const displayEvents = replayMode
-    ? replayEvents
-    : (activeTrace?.events ?? []);
+  const handleDeleteTrace = useCallback(async (path: string) => {
+    const API_BASE = import.meta.env.DEV ? "http://localhost:3000" : "";
+    try {
+      const res = await fetch(`${API_BASE}/api/traces/${encodeURIComponent(path)}`, { method: "DELETE" });
+      if (res.ok) {
+        if (selectedFile === path) setSelectedFile(null);
+        refreshFiles();
+      }
+    } catch { /* ignore */ }
+  }, [selectedFile, refreshFiles]);
+
+  const displayEvents = replayMode ? replayEvents : (activeTrace?.events ?? []);
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
@@ -99,68 +126,21 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant={replayMode ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setReplayMode(!replayMode);
-                      setLiveEnabled(false);
-                    }}
-                    aria-label="Toggle replay mode"
-                  />
-                }
-              >
+              <TooltipTrigger render={<Button variant={replayMode ? "secondary" : "outline"} size="sm" onClick={() => { setReplayMode(!replayMode); setLiveEnabled(false); }} aria-label="Toggle replay mode" />}>
                 <PlayIcon className="h-3.5 w-3.5" />
                 {replayMode ? "Replay On" : "Replay"}
               </TooltipTrigger>
-              <TooltipContent>
-                Step through events at custom speed
-              </TooltipContent>
+              <TooltipContent>Step through events at custom speed</TooltipContent>
             </Tooltip>
-
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant={liveEnabled || streamMode ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      if (streamMode) {
-                        setStreamMode(false);
-                      } else {
-                        setLiveEnabled(!liveEnabled);
-                      }
-                      setReplayMode(false);
-                    }}
-                    aria-label="Toggle live mode"
-                  />
-                }
-              >
-                <SignalIcon
-                  className={`h-3.5 w-3.5 ${liveEnabled || streamMode ? "text-green-400 animate-pulse" : ""}`}
-                />
+              <TooltipTrigger render={<Button variant={liveEnabled || streamMode ? "secondary" : "outline"} size="sm" onClick={() => { streamMode ? setStreamMode(false) : setLiveEnabled(!liveEnabled); setReplayMode(false); }} aria-label="Toggle live mode" />}>
+                <SignalIcon className={`h-3.5 w-3.5 ${liveEnabled || streamMode ? "text-green-400 animate-pulse" : ""}`} />
                 {streamMode ? "Streaming" : liveEnabled ? "Live" : "Live Off"}
               </TooltipTrigger>
-              <TooltipContent>
-                {streamMode
-                  ? "Real-time agent event stream active"
-                  : "Stream trace updates in real-time"}
-              </TooltipContent>
+              <TooltipContent>{streamMode ? "Real-time agent event stream active" : "Stream trace updates in real-time"}</TooltipContent>
             </Tooltip>
-
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    onClick={reload}
-                    aria-label="Reload trace"
-                  />
-                }
-              >
+              <TooltipTrigger render={<Button variant="outline" size="icon-sm" onClick={reload} aria-label="Reload trace" />}>
                 <ArrowPathIcon className="h-4 w-4" />
               </TooltipTrigger>
               <TooltipContent>Reload current trace</TooltipContent>
@@ -171,17 +151,22 @@ export default function App() {
 
       <div className="flex flex-1 min-h-0">
         <aside className="w-[280px] shrink-0 border-r border-border bg-muted/50 flex flex-col">
-          <div className="p-3 border-b border-border">
+          <div className="border-b border-border relative z-10 bg-muted/50">
             <ScenarioLauncher onRunStarted={handleRunStarted} onRunComplete={refreshFiles} />
           </div>
 
-          <div className="px-3 pt-3 pb-1">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Trace History
-            </span>
+          <div className="flex items-center justify-between px-3 pt-2 pb-1">
+            <Tooltip>
+              <TooltipTrigger render={<span className="text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-help" />}>
+                Trace History
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-[220px] text-xs">
+                Past agent runs. Select a trace to inspect the timeline, tool calls, and findings.
+              </TooltipContent>
+            </Tooltip>
           </div>
 
-          <ScrollArea className="flex-1 min-h-0">
+          <ScrollArea className="flex-1 min-h-[120px]">
             <div className="px-2 pb-3 flex flex-col gap-0.5">
               {filesLoading && (
                 <div className="space-y-2 p-2">
@@ -204,6 +189,7 @@ export default function App() {
                     file={f}
                     isSelected={selectedFile === f.path}
                     onSelect={handleFileSelect}
+                    onDelete={handleDeleteTrace}
                   />
                 ))}
             </div>
@@ -272,15 +258,7 @@ export default function App() {
                   </>
                 )}
 
-                {!loading && !error && !activeTrace && (
-                  <Card>
-                    <CardContent className="text-center py-16 text-muted-foreground">
-                      <EyeIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                      <p className="text-lg">Select a trace or run a scenario</p>
-                      <p className="text-sm mt-1">Pick from the sidebar, or use the launcher to start an agent run</p>
-                    </CardContent>
-                  </Card>
-                )}
+                {!loading && !error && !activeTrace && <EmptyState />}
               </>
             )}
           </div>

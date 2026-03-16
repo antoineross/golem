@@ -139,27 +139,6 @@ function LlmCallGroup({
           </ChainOfThoughtStep>
         )}
 
-        {llm.tokens && (
-          <ChainOfThoughtStep icon={CpuIcon} label="Token usage" status="complete">
-            <div className="rounded-md bg-muted p-2 text-xs space-y-0.5">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Input</span>
-                <span className="tabular-nums">{llm.tokens.input.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Output</span>
-                <span className="tabular-nums">{llm.tokens.output.toLocaleString()}</span>
-              </div>
-              {(llm.tokens.thoughts ?? 0) > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Thinking</span>
-                  <span className="tabular-nums">{llm.tokens.thoughts!.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-          </ChainOfThoughtStep>
-        )}
-
         {thoughts.map((thought) => (
           <Reasoning key={thought.id} isStreaming={false}>
             <ReasoningTrigger />
@@ -211,7 +190,7 @@ function StaticToolCallStep({ event }: { event: TimelineEvent }) {
         </ToolContent>
       </Tool>
 
-      {event.screenshot_url && (
+      {event.screenshot_url && /^https?:\/\//i.test(event.screenshot_url) && (
         <ChainOfThoughtImage caption={`Screenshot from ${toolName}`}>
           <img
             src={event.screenshot_url}

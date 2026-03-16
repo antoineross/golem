@@ -69,27 +69,6 @@ export function LlmCallTree({ call, toolCalls, thoughts, isFirstCall, isStreamin
           </ChainOfThoughtStep>
         )}
 
-        {call.inputTokens != null && (
-          <ChainOfThoughtStep icon={CpuIcon} label="Token usage" status="complete">
-            <div className="rounded-md bg-muted p-2 text-xs space-y-0.5">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Input</span>
-                <span className="tabular-nums">{call.inputTokens.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Output</span>
-                <span className="tabular-nums">{(call.outputTokens ?? 0).toLocaleString()}</span>
-              </div>
-              {(call.thinkTokens ?? 0) > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Thinking</span>
-                  <span className="tabular-nums">{call.thinkTokens!.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-          </ChainOfThoughtStep>
-        )}
-
         {thoughts.map((thought, i) => (
           <Reasoning key={`thought-${call.id}-${i}`} isStreaming={thought.isStreaming}>
             <ReasoningTrigger />
@@ -165,7 +144,7 @@ function StreamingToolCallStep({ toolCall }: { toolCall: StreamingToolCall }) {
         </ChainOfThoughtImage>
       )}
 
-      {toolCall.screenshotUrl && (
+      {toolCall.screenshotUrl && /^https?:\/\//i.test(toolCall.screenshotUrl) && (
         <ChainOfThoughtImage caption={`Screenshot from ${toolCall.name}`}>
           <img
             src={toolCall.screenshotUrl}

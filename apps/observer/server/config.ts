@@ -9,6 +9,7 @@ export interface ServerConfig {
   repoRoot: string;
   port: number;
   demoTargetUrl: string;
+  golemApiUrl: string | null;
 }
 
 export function createConfig(): ServerConfig {
@@ -22,6 +23,7 @@ export function createConfig(): ServerConfig {
     repoRoot: path.resolve(baseDir, process.env.REPO_ROOT ?? "../../"),
     port: parseInt(process.env.PORT ?? "3000", 10),
     demoTargetUrl: process.env.DEMO_TARGET_URL ?? "http://host.docker.internal:4000",
+    golemApiUrl: process.env.GOLEM_API_URL ?? null,
   };
 }
 

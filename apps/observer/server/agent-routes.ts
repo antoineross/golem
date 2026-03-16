@@ -52,7 +52,7 @@ function buildScenarios(demoTargetUrl: string): Record<string, ScenarioConfig> {
     agent: {
       name: "Full Agent Run",
       harness: "agent",
-      description: "Runs the full security auditor agent against the default target. Uses all available tools via the Supacrawl scraper.",
+      description: "Runs the full security auditor agent against the default target.",
       prompt: "Browse https://example.com and describe what you see.",
       tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
       requires_scraper: true,
@@ -60,10 +60,115 @@ function buildScenarios(demoTargetUrl: string): Record<string, ScenarioConfig> {
   };
 }
 
+async function startRunViaGolemApi(
+  golemApiUrl: string,
+  prompt: string,
+  harness: string,
+  traceFile: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const resp = await fetch(`${golemApiUrl}/api/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, harness, trace_file: traceFile }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text();
+      return { ok: false, error: `golem API returned ${resp.status}: ${body}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `golem API unreachable: ${e}` };
+  }
+}
+
+function startRunViaSpawn(
+  config: ServerConfig,
+  harness: string,
+  prompt: string,
+  traceFile: string,
+): void {
+  const golemScript = path.join(config.repoRoot, "golem");
+  const args = ["e2e", harness];
+  if (prompt) args.push(prompt);
+
+  const child = spawn(golemScript, args, {
+    cwd: config.repoRoot,
+    env: { ...process.env, GOLEM_TRACE_FILE: traceFile },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stderr = "";
+  const STDERR_CAP = 4096;
+  child.stdout.on("data", () => {});
+  child.stderr.on("data", (d: Buffer) => {
+    stderr += d.toString();
+    if (stderr.length > STDERR_CAP) stderr = stderr.slice(-STDERR_CAP);
+  });
+
+  child.on("close", (code: number | null) => {
+    if (code === 0) {
+      setAgentState({ status: "complete", error: null });
+    } else {
+      setAgentState({ status: "error", error: `exit code ${code}: ${stderr.slice(-500)}` });
+    }
+    console.log(`agent run finished: status=${getAgentState().status}, code=${code}`);
+  });
+}
+
+async function pollGolemStatus(golemApiUrl: string): Promise<void> {
+  const MAX_POLL_MS = 10 * 60 * 1000;
+  const startTime = Date.now();
+  const poll = async () => {
+    if (Date.now() - startTime > MAX_POLL_MS) {
+      setAgentState({ status: "error", error: "poll timeout: agent did not complete within 10 minutes" });
+      return;
+    }
+    try {
+      const resp = await fetch(`${golemApiUrl}/api/status`);
+      if (!resp.ok) return;
+      const data = await resp.json() as { status: string; error?: string; trace_file?: string };
+      if (data.status === "complete") {
+        setAgentState({ status: "complete", error: null });
+      } else if (data.status === "error") {
+        setAgentState({ status: "error", error: data.error ?? "unknown error" });
+      } else {
+        setTimeout(poll, 500);
+      }
+    } catch {
+      setTimeout(poll, 1000);
+    }
+  };
+  setTimeout(poll, 500);
+}
+
 export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
   const SCENARIOS = buildScenarios(config.demoTargetUrl);
+  const useGolemApi = Boolean(config.golemApiUrl);
 
-  app.get("/api/agent/status", (c) => {
+  if (useGolemApi) {
+    console.log(`agent routes: using golem API at ${config.golemApiUrl}`);
+  } else {
+    console.log("agent routes: using local spawn (dev mode)");
+  }
+
+  app.get("/api/agent/status", async (c) => {
+    if (useGolemApi && getAgentState().status === "running") {
+      try {
+        const resp = await fetch(`${config.golemApiUrl}/api/status`);
+        if (resp.ok) {
+          const remote = await resp.json() as { status: string; error?: string };
+          if (remote.status === "complete" || remote.status === "error") {
+            setAgentState({
+              status: remote.status as "complete" | "error",
+              error: remote.error ?? null,
+            });
+          }
+        }
+      } catch {
+        // fall through to local state
+      }
+    }
     const state = getAgentState();
     return c.json({
       status: state.status,
@@ -91,38 +196,26 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
       return c.json({ error: `unknown scenario: ${scenario}` }, 400);
     }
 
-    setAgentState({ status: "running", error: null });
-
-    const golemScript = path.join(config.repoRoot, "golem");
     const harness = scenarioConfig?.harness ?? "agent";
-    const args = ["e2e", harness];
-    if (customPrompt) args.push(customPrompt);
+    const prompt = customPrompt ?? scenarioConfig?.prompt ?? "";
 
-    const traceDir = path.join(config.repoRoot, "tmp", "tests", harness);
+    const traceDir = path.join(config.traceDir, harness);
+    try { fs.mkdirSync(traceDir, { recursive: true }); } catch {}
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const traceFile = path.join(traceDir, `${harness}_${ts}_otel_spans.json`);
-    setAgentState({ traceFile });
 
-    const child = spawn(golemScript, args, {
-      cwd: config.repoRoot,
-      env: { ...process.env, GOLEM_TRACE_FILE: traceFile },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    setAgentState({ status: "running", error: null, traceFile });
 
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-    child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-
-    child.on("close", (code: number | null) => {
-      if (code === 0) {
-        setAgentState({ status: "complete", error: null });
-      } else {
-        setAgentState({ status: "error", error: `exit code ${code}: ${stderr.slice(-500)}` });
+    if (useGolemApi) {
+      const result = await startRunViaGolemApi(config.golemApiUrl!, prompt, harness, traceFile);
+      if (!result.ok) {
+        setAgentState({ status: "error", error: result.error ?? "failed to start agent" });
+        return c.json({ error: result.error }, 502);
       }
-      console.log(`agent run finished: status=${getAgentState().status}, code=${code}`);
-      if (stdout) console.log(`stdout: ${stdout.slice(-200)}`);
-    });
+      pollGolemStatus(config.golemApiUrl!);
+    } else {
+      startRunViaSpawn(config, harness, prompt, traceFile);
+    }
 
     return c.json({
       status: "running",
@@ -134,26 +227,24 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
   app.get("/api/agent/stream", (c) => {
     return streamSSE(c, async (stream) => {
       let offset = 0;
+      let lastFileSize = 0;
       let running = true;
       let idleCount = 0;
-      const MAX_IDLE = 600; // 2 minutes at 200ms intervals
-      const HEARTBEAT_INTERVAL = 25; // 25 iterations * 200ms = 5 seconds
+      const MAX_IDLE = 600;
+      const HEARTBEAT_INTERVAL = 25;
 
-      stream.onAbort(() => {
-        running = false;
-      });
+      stream.onAbort(() => { running = false; });
 
-      const state = getAgentState();
-      const eventsPath = state.traceFile
-        ? eventsPathForTrace(state.traceFile)
-        : null;
+      const initialState = getAgentState();
+      const scopedTraceFile = initialState.traceFile;
+      const scopedEventsPath = scopedTraceFile ? eventsPathForTrace(scopedTraceFile) : null;
 
       await stream.writeSSE({
         data: JSON.stringify({
           type: "stream_start",
-          trace_file: state.traceFile,
-          events_path: eventsPath,
-          status: state.status,
+          trace_file: scopedTraceFile,
+          events_path: scopedEventsPath,
+          status: initialState.status,
         }),
         event: "control",
       });
@@ -161,31 +252,48 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
       let iterationsSinceLastEvent = 0;
 
       while (running) {
+        if (useGolemApi) {
+          try {
+            const resp = await fetch(`${config.golemApiUrl}/api/status`);
+            if (resp.ok) {
+              const remote = await resp.json() as { status: string; error?: string };
+              if (remote.status === "complete" || remote.status === "error") {
+                setAgentState({
+                  status: remote.status as "complete" | "error",
+                  error: remote.error ?? null,
+                });
+              }
+            }
+          } catch {}
+        }
+
         const currentState = getAgentState();
-        const currentEventsPath = currentState.traceFile
-          ? eventsPathForTrace(currentState.traceFile)
-          : null;
+        const superseded = currentState.traceFile !== scopedTraceFile;
 
         let sentEvents = false;
 
-        if (currentEventsPath && fs.existsSync(currentEventsPath)) {
+        if (scopedEventsPath && fs.existsSync(scopedEventsPath)) {
           try {
-            const content = fs.readFileSync(currentEventsPath, "utf-8");
-            const lines = content.split("\n").filter(Boolean);
+            const stat = fs.statSync(scopedEventsPath);
+            if (stat.size !== lastFileSize) {
+              lastFileSize = stat.size;
+              const content = fs.readFileSync(scopedEventsPath, "utf-8");
+              const lines = content.split("\n").filter(Boolean);
 
-            for (let i = offset; i < lines.length; i++) {
-              await stream.writeSSE({
-                data: lines[i]!,
-                event: "agent_event",
-                id: String(i),
-              });
+              for (let i = offset; i < lines.length; i++) {
+                await stream.writeSSE({
+                  data: lines[i]!,
+                  event: "agent_event",
+                  id: String(i),
+                });
+              }
+              if (lines.length > offset) {
+                idleCount = 0;
+                sentEvents = true;
+                iterationsSinceLastEvent = 0;
+              }
+              offset = lines.length;
             }
-            if (lines.length > offset) {
-              idleCount = 0;
-              sentEvents = true;
-              iterationsSinceLastEvent = 0;
-            }
-            offset = lines.length;
           } catch (e) {
             if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code !== "ENOENT") {
               console.warn("agent stream read error:", e);
@@ -193,13 +301,13 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
           }
         }
 
-        if (currentState.status !== "running") {
+        if (currentState.status !== "running" || superseded) {
           await stream.writeSSE({
             data: JSON.stringify({
               type: "stream_end",
-              status: currentState.status,
-              error: currentState.error,
-              trace_file: currentState.traceFile,
+              status: superseded ? "complete" : currentState.status,
+              error: superseded ? null : currentState.error,
+              trace_file: scopedTraceFile,
               total_events: offset,
             }),
             event: "control",
