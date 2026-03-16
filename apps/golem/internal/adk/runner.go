@@ -14,7 +14,9 @@ type RunnerConfig struct {
 	ArtifactService artifact.Service
 }
 
-func NewRunner(appName string, rootAgent agent.Agent, opts ...RunnerConfig) (*runner.Runner, session.Service, error) {
+// NewRunner creates a runner with session and optional artifact services.
+// Pass nil for rcfg to use defaults.
+func NewRunner(appName string, rootAgent agent.Agent, rcfg *RunnerConfig) (*runner.Runner, session.Service, error) {
 	sessionSvc := session.InMemoryService()
 
 	cfg := runner.Config{
@@ -23,8 +25,8 @@ func NewRunner(appName string, rootAgent agent.Agent, opts ...RunnerConfig) (*ru
 		SessionService: sessionSvc,
 	}
 
-	if len(opts) > 0 && opts[0].ArtifactService != nil {
-		cfg.ArtifactService = opts[0].ArtifactService
+	if rcfg != nil && rcfg.ArtifactService != nil {
+		cfg.ArtifactService = rcfg.ArtifactService
 	}
 
 	r, err := runner.New(cfg)

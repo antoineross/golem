@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"golem/internal/supacrawl"
 
@@ -71,12 +72,12 @@ func NewBrowseTool(client *supacrawl.Client) (tool.Tool, error) {
 		}
 
 		content := resp.Content
-		if len(content) > 8000 {
+		if utf8.RuneCountInString(content) > 8000 {
 			content = truncateUTF8(content, 8000) + "\n... [truncated]"
 		}
 
 		html := resp.HTML
-		if len(html) > 8000 {
+		if utf8.RuneCountInString(html) > 8000 {
 			html = truncateUTF8(html, 8000) + "\n... [truncated]"
 		}
 
@@ -211,7 +212,7 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 			content = fmt.Sprintf("[scrape after click failed: %v]", scrapeErr)
 		} else if scrapeResp != nil {
 			content = scrapeResp.Content
-			if len(content) > 4000 {
+			if utf8.RuneCountInString(content) > 4000 {
 				content = truncateUTF8(content, 4000) + "\n... [truncated]"
 			}
 		}

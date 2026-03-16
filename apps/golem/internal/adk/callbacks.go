@@ -17,11 +17,13 @@ type Callbacks struct {
 }
 
 func NewCallbacks(logger *slog.Logger) *Callbacks {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Callbacks{logger: logger}
 }
 
-// BeforeAgent logs the start of an agent invocation and validates that
-// a target URL exists in session state.
+// BeforeAgent logs the start of an agent invocation with current session state.
 func (cb *Callbacks) BeforeAgent(ctx agent.CallbackContext) (*genai.Content, error) {
 	targetURL := stateGetString(ctx.ReadonlyState(), StateKeyTargetURL)
 	visitedCount := len(stateGetStringSlice(ctx.ReadonlyState(), StateKeyVisitedURLs))
@@ -80,40 +82,37 @@ func (cb *Callbacks) BeforeModel(ctx agent.CallbackContext, req *model.LLMReques
 }
 
 // AfterModel logs the model response including whether it contains tool
-// calls or a final text response.
+// calls or a final text response. Passes through the original response
+// and error to avoid suppressing them.
 func (cb *Callbacks) AfterModel(ctx agent.CallbackContext, resp *model.LLMResponse, respErr error) (*model.LLMResponse, error) {
 	if respErr != nil {
 		cb.logger.Error("model response error",
 			"agent", ctx.AgentName(),
 			"error", respErr,
 		)
-		return nil, nil
-	}
-
-	if resp == nil || resp.Content == nil {
+	} else if resp == nil || resp.Content == nil {
 		cb.logger.Warn("model returned empty response",
 			"agent", ctx.AgentName(),
 		)
-		return nil, nil
+	} else {
+		toolCalls := 0
+		hasText := false
+		for _, part := range resp.Content.Parts {
+			if part.FunctionCall != nil {
+				toolCalls++
+			}
+			if part.Text != "" {
+				hasText = true
+			}
+		}
+
+		cb.logger.Info("model response",
+			"agent", ctx.AgentName(),
+			"tool_calls", toolCalls,
+			"has_text", hasText,
+			"role", resp.Content.Role,
+		)
 	}
 
-	toolCalls := 0
-	hasText := false
-	for _, part := range resp.Content.Parts {
-		if part.FunctionCall != nil {
-			toolCalls++
-		}
-		if part.Text != "" {
-			hasText = true
-		}
-	}
-
-	cb.logger.Info("model response",
-		"agent", ctx.AgentName(),
-		"tool_calls", toolCalls,
-		"has_text", hasText,
-		"finish_reason", resp.Content.Role,
-	)
-
-	return nil, nil
+	return resp, respErr
 }

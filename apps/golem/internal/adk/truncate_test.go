@@ -66,3 +66,10 @@ func TestTruncateUTF8_ZeroMax(t *testing.T) {
 		t.Errorf("expected empty string, got %q", result)
 	}
 }
+
+func TestTruncateUTF8_NegativeMax(t *testing.T) {
+	result := truncateUTF8("hello", -5)
+	if result != "" {
+		t.Errorf("expected empty string for negative max, got %q", result)
+	}
+}

@@ -39,7 +39,14 @@ func ComposeWithState(sc StateContext) string {
 		ctx = append(ctx, fmt.Sprintf("- Current methodology step: %s", sc.CurrentStep))
 	}
 	if len(sc.VisitedURLs) > 0 {
-		ctx = append(ctx, fmt.Sprintf("- Pages already visited (%d): %s", len(sc.VisitedURLs), strings.Join(sc.VisitedURLs, ", ")))
+		maxDisplay := 20
+		urls := sc.VisitedURLs
+		suffix := ""
+		if len(urls) > maxDisplay {
+			suffix = fmt.Sprintf(" ... and %d more", len(urls)-maxDisplay)
+			urls = urls[len(urls)-maxDisplay:]
+		}
+		ctx = append(ctx, fmt.Sprintf("- Pages already visited (%d): %s%s", len(sc.VisitedURLs), strings.Join(urls, ", "), suffix))
 	}
 	if sc.FindingsCount > 0 {
 		ctx = append(ctx, fmt.Sprintf("- Findings so far: %d", sc.FindingsCount))

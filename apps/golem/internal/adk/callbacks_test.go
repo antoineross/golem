@@ -12,8 +12,18 @@ func TestNewCallbacks(t *testing.T) {
 	if cb == nil {
 		t.Fatal("NewCallbacks returned nil")
 	}
+	if cb.logger != logger {
+		t.Fatal("logger not set correctly")
+	}
+}
+
+func TestNewCallbacks_NilLogger(t *testing.T) {
+	cb := NewCallbacks(nil)
+	if cb == nil {
+		t.Fatal("NewCallbacks returned nil")
+	}
 	if cb.logger == nil {
-		t.Fatal("logger not set")
+		t.Fatal("nil logger should default to slog.Default()")
 	}
 }
 

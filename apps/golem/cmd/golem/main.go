@@ -51,7 +51,7 @@ func main() {
 
 	artifactSvc := artifact.InMemoryService()
 
-	r, sessionSvc, err := golemAdk.NewRunner("golem", auditor, golemAdk.RunnerConfig{
+	r, sessionSvc, err := golemAdk.NewRunner("golem", auditor, &golemAdk.RunnerConfig{
 		ArtifactService: artifactSvc,
 	})
 	if err != nil {
