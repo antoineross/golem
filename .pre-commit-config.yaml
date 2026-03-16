@@ -1,0 +1,42 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-executables-have-shebangs
+
+  - repo: local
+    hooks:
+      - id: verify-claude-symlink
+        name: verify CLAUDE.md symlink
+        language: system
+        entry: bash -c '[ -L CLAUDE.md ] && [ "$(readlink CLAUDE.md)" = "AGENTS.md" ]'
+        pass_filenames: false
+
+      - id: gofmt-check
+        name: gofmt check
+        language: system
+        entry: bash -c 'if [ -f go.mod ]; then files=$(find . -type f -name "*.go" -not -path "./.git/*"); if [ -z "$files" ]; then echo "No Go files found; skipping gofmt check"; exit 0; fi; unformatted=$(echo "$files" | xargs gofmt -l); if [ -n "$unformatted" ]; then echo "The following files need gofmt"; echo "$unformatted"; echo "Run gofmt -w <files>"; exit 1; fi; else echo "go.mod not present; skipping gofmt check"; fi'
+        pass_filenames: false
+
+      - id: govet-if-module
+        name: go vet when go.mod exists
+        language: system
+        entry: bash -c 'if [ -f go.mod ]; then echo "Running go vet ./..."; go vet ./...; else echo "go.mod not present; skipping go vet"; fi'
+        pass_filenames: false
+
+      - id: gotest-if-module
+        name: go test when go.mod exists
+        language: system
+        entry: bash -c 'if [ -f go.mod ]; then echo "Running go test ./..."; go test ./...; else echo "go.mod not present; skipping go test"; fi'
+        pass_filenames: false
+
+      - id: shellcheck
+        name: shellcheck shell scripts
+        language: system
+        entry: bash -c 'if [ "$#" -eq 0 ]; then exit 0; fi; if ! command -v shellcheck >/dev/null 2>&1; then echo "shellcheck not installed; skipping shell script checks"; exit 0; fi; shellcheck "$@"' --
+        types_or: [shell]
