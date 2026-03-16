@@ -217,6 +217,10 @@ Note: `.gemini/styleguide.md` restricts Gemini Code Assist automated reviews to 
 | Over-engineering | Abstractions without clear benefit |
 | Under-testing | Only happy path tests |
 | Committed build artifacts | Binaries, `*.test`, local executables |
+| Manual `Accept-Encoding` | Go's `http.Client` skips auto-decompression when `Accept-Encoding` is set manually. Verify decompression is handled explicitly. |
+| `deflate` encoding | Servers commonly send zlib-wrapped (RFC 1950), not raw deflate (RFC 1951). Use `zlib.NewReader`, not `flate.NewReader`. |
+| Nondeterministic map iteration | `for k, v := range map` is random-order. Sort keys before building output strings or tool responses. |
+| Intentional test delays | `time.Sleep` in production code makes tests slow. Make delays injectable (e.g., `skipDelay` field) so tests can bypass them. |
 
 ---
 

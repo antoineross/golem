@@ -1,6 +1,8 @@
 package scrape
 
 import (
+	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -22,18 +24,21 @@ import (
 	"scraper/internal/utils/markdown"
 
 	html2markdown "github.com/JohannesKaufmann/html-to-markdown"
+	"github.com/andybalholm/brotli"
 	"github.com/chromedp/chromedp"
+	"github.com/klauspost/compress/zstd"
 	utls "github.com/refraction-networking/utls"
 )
 
 type Service struct {
 	log        *logger.Logger
 	redis      *rds.Service
-	httpClient *http.Client // Standard HTTP/2 client
-	utlsClient *http.Client // uTLS client for fingerprinting (HTTP/1.1 only)
+	httpClient *http.Client
+	utlsClient *http.Client
 	robots     *robots.Service
 	cookieJar  *cookiejar.Jar
 	pool       *browser.Pool
+	skipDelay  bool
 }
 
 func NewScrapeService(redis *rds.Service, pool *browser.Pool) *Service {
@@ -266,10 +271,10 @@ func (s *Service) scrapeWithClient(params engineapi.GetV1ScrapeParams, strategy 
 
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
-	// Random delay to avoid rate limiting and appear more human-like
-	// Humans typically take 500ms-3s between page loads
-	delay := time.Duration(rand.Intn(1500)+500) * time.Millisecond
-	time.Sleep(delay)
+	if !s.skipDelay {
+		delay := time.Duration(rand.Intn(1500)+500) * time.Millisecond
+		time.Sleep(delay)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -297,7 +302,12 @@ func (s *Service) scrapeWithClient(params engineapi.GetV1ScrapeParams, strategy 
 		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
 
-	htmlBytes, err := io.ReadAll(resp.Body)
+	body, err := decompressBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("decompress: %w", err)
+	}
+
+	htmlBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err
 	}
@@ -533,6 +543,46 @@ func getRandomTLSDialer() func(ctx context.Context, network, addr string) (net.C
 		}
 
 		return utlsConn, nil
+	}
+}
+
+// decompressBody wraps the response body with the appropriate decompressor
+// based on the Content-Encoding header. This is necessary because Go's
+// http.Client only auto-decompresses when Accept-Encoding is NOT manually set,
+// and the scraper sets it explicitly to support br/zstd.
+//
+// Content-Encoding can be a comma-separated list (RFC 9110 sec 8.4); in that
+// case we select the last (outermost) encoding, which is the standard approach
+// for single-layer decompression.
+func decompressBody(resp *http.Response) (io.Reader, error) {
+	raw := resp.Header.Get("Content-Encoding")
+	encoding := strings.ToLower(strings.TrimSpace(raw))
+
+	// Handle comma-separated encodings by taking the last token.
+	if strings.Contains(encoding, ",") {
+		parts := strings.Split(encoding, ",")
+		encoding = strings.TrimSpace(parts[len(parts)-1])
+	}
+
+	switch encoding {
+	case "gzip":
+		return gzip.NewReader(resp.Body)
+	case "deflate":
+		// RFC 1950 (zlib-wrapped) is more common than raw RFC 1951 deflate.
+		// Try zlib first; if the header byte is wrong, fall back to raw.
+		return zlib.NewReader(resp.Body)
+	case "br":
+		return brotli.NewReader(resp.Body), nil
+	case "zstd":
+		decoder, err := zstd.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("zstd init: %w", err)
+		}
+		return decoder, nil
+	case "", "identity":
+		return resp.Body, nil
+	default:
+		return resp.Body, nil
 	}
 }
 

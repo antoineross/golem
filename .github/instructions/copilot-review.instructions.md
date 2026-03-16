@@ -140,3 +140,5 @@ mutation {
 - **Framework feature suggestions**: Suggesting ADK features without checking version constraints.
 - **Intentionally lenient validation**: When a safety net exists at a higher level.
 - **Missing error handling**: Sometimes errors are intentionally propagated to a higher-level handler.
+- **`tool.Context` construction in tests**: ADK `tool.Context` cannot be constructed outside ADK internals. Reviewers may suggest refactoring tool closures to accept `tool.Context` for testing, but the correct approach is to test the underlying logic functions directly (e.g., `scanForHidden`) and verify tool registration separately. See AGENTS.md testing policy, level 2.
+- **Test assertions too lenient**: Reviewers correctly flag tests like `count > 2` that always pass. Prefer exact assertions (`count == N`) or at-minimum bounds that would actually fail on regressions.
