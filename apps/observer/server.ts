@@ -12,6 +12,7 @@ const TRACE_DIR = path.resolve(SCRIPT_DIR, process.env.TRACE_DIR ?? "../../tmp/t
 const SCREENSHOT_DIR = path.resolve(SCRIPT_DIR, process.env.SCREENSHOT_DIR ?? "../../tmp/screenshots");
 const REPO_ROOT = path.resolve(SCRIPT_DIR, process.env.REPO_ROOT ?? "../../");
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
+const RUNNER_ENABLED = (process.env.RUNNER_ENABLED ?? "true") !== "false";
 
 type AgentStatus = "idle" | "running" | "complete" | "error";
 let agentStatus: AgentStatus = "idle";
@@ -326,10 +327,17 @@ app.get("/api/agent/status", (c) => {
 });
 
 app.get("/api/agent/scenarios", (c) => {
-  return c.json({ scenarios: SCENARIOS });
+  return c.json({ scenarios: SCENARIOS, runner_enabled: RUNNER_ENABLED });
 });
 
 app.post("/api/agent/run", async (c) => {
+  if (!RUNNER_ENABLED) {
+    return c.json(
+      { error: "Scenario runner is disabled in this environment. Use './golem e2e <level>' from the host CLI." },
+      503,
+    );
+  }
+
   if (agentStatus === "running") {
     return c.json({ error: "agent is already running" }, 409);
   }
