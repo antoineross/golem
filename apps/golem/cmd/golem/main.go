@@ -189,12 +189,14 @@ func main() {
 		}
 	}
 
-	slog.Info("agent run complete")
-	tw.Write(golemAdk.TraceEvent{Type: "run_complete"})
-
 	if runErr != nil {
+		slog.Info("agent run failed")
+		tw.Write(golemAdk.TraceEvent{Type: "run_failed", ResponseText: runErr.Error()})
 		os.Exit(1)
 	}
+
+	slog.Info("agent run complete")
+	tw.Write(golemAdk.TraceEvent{Type: "run_complete"})
 }
 
 func defaultPrompt(hasBrowse bool) string {

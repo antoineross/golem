@@ -108,6 +108,13 @@ func main() {
 		state.set("running", traceFile, "")
 
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("agent goroutine panicked", "panic", r)
+					state.set("error", "", fmt.Sprintf("internal panic: %v", r))
+				}
+			}()
+
 			hasCustomKey := req.APIKey != ""
 			slog.Info("starting agent run", "prompt", req.Prompt, "trace_file", traceFile, "harness", harness, "custom_key", hasCustomKey)
 
@@ -121,7 +128,7 @@ func main() {
 				cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
 			}
 
-			var outputBuf bytes.Buffer
+			var outputBuf cappedBuffer
 			cmd.Stdout = io.MultiWriter(os.Stdout, &outputBuf)
 			cmd.Stderr = io.MultiWriter(os.Stderr, &outputBuf)
 
@@ -156,8 +163,29 @@ func main() {
 	}
 }
 
-func extractAgentError(stderr string, exitErr error) string {
-	for _, line := range strings.Split(stderr, "\n") {
+const maxOutputCapture = 64 * 1024 // 64KB
+
+type cappedBuffer struct {
+	buf bytes.Buffer
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	remaining := maxOutputCapture - c.buf.Len()
+	if remaining <= 0 {
+		return len(p), nil
+	}
+	if len(p) > remaining {
+		p = p[:remaining]
+	}
+	return c.buf.Write(p)
+}
+
+func (c *cappedBuffer) String() string {
+	return c.buf.String()
+}
+
+func extractAgentError(output string, exitErr error) string {
+	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -171,7 +199,7 @@ func extractAgentError(stderr string, exitErr error) string {
 			return entry.Error
 		}
 	}
-	tail := stderr
+	tail := output
 	if len(tail) > 500 {
 		tail = tail[len(tail)-500:]
 	}
@@ -185,7 +213,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Api-Key")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

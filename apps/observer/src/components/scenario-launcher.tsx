@@ -87,6 +87,11 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError 
     return () => clearInterval(interval);
   }, [onRunComplete, onError]);
 
+  const handleRunError = (msg: string) => {
+    setError(msg);
+    onError?.(msg);
+  };
+
   const runScenario = async (scenarioKey: string) => {
     try {
       const payload: Record<string, string> = { scenario: scenarioKey };
@@ -104,10 +109,10 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError 
         pollCleanupRef.current?.();
         pollCleanupRef.current = pollStatus();
       } else {
-        setError(data.error);
+        handleRunError(data.error);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to start agent");
+      handleRunError(err instanceof Error ? err.message : "failed to start agent");
     }
   };
 
@@ -129,10 +134,10 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError 
         pollCleanupRef.current?.();
         pollCleanupRef.current = pollStatus();
       } else {
-        setError(data.error);
+        handleRunError(data.error);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to start agent");
+      handleRunError(err instanceof Error ? err.message : "failed to start agent");
     }
   };
 

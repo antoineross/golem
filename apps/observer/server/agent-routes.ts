@@ -96,7 +96,7 @@ function startRunViaSpawn(
   const args = ["e2e", harness];
   if (prompt) args.push(prompt);
 
-  const env: Record<string, string> = { ...process.env as Record<string, string>, GOLEM_TRACE_FILE: traceFile };
+  const env = { ...process.env, GOLEM_TRACE_FILE: traceFile } as NodeJS.ProcessEnv;
   if (apiKey) env.GOOGLE_API_KEY = apiKey;
 
   const child = spawn(golemScript, args, {
@@ -203,10 +203,9 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
     }
 
     const body = await c.req.json().catch(() => ({}));
-    const typed = body as Record<string, string>;
-    const scenario = typed.scenario ?? "level0";
-    const customPrompt = typed.prompt;
-    const userApiKey = typed.api_key;
+    const scenario = typeof body?.scenario === "string" ? body.scenario : "level0";
+    const customPrompt = typeof body?.prompt === "string" ? body.prompt : undefined;
+    const userApiKey = typeof body?.api_key === "string" ? body.api_key : undefined;
 
     const scenarioConfig = SCENARIOS[scenario];
     if (!scenarioConfig && !customPrompt) {
