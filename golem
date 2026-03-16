@@ -172,6 +172,7 @@ Commands:
   build           Build the Go binary
   lint            Run linters
   test            Run tests
+  e2e [name]      Run E2E test harness (thinking, agent)
   help            Show this help
 EOF
 }
@@ -251,6 +252,12 @@ cmd_env_list() {
     "FALLBACK_LLM_MODEL"
     "GOLEM_LOG_LEVEL"
     "GOLEM_TIMEOUT_SECONDS"
+    "GOLEM_THINKING_LEVEL"
+    "GOLEM_INCLUDE_THOUGHTS"
+    "GOLEM_THINKING_BUDGET"
+    "GOLEM_TRACE_FILE"
+    "GOLEM_TRACE_CONSOLE"
+    "GOLEM_TRACE_CAPTURE_CONTENT"
   )
 
   echo "Environment sources: ${ENV_SOURCES_DISPLAY}"
@@ -305,6 +312,46 @@ cmd_test() {
   fi
 }
 
+cmd_e2e() {
+  check_go
+  check_env
+  load_env
+  ensure_tmp
+
+  local harness="${1:-thinking}"
+  local out_dir="${REPO_ROOT}/tmp/tests/${harness}"
+  mkdir -p "${out_dir}"
+
+  case "${harness}" in
+    thinking)
+      log_info "running thinking mode E2E harness"
+      (cd "${REPO_ROOT}/apps/golem" && OUTPUT_DIR="${out_dir}" go run ./cmd/thinking-test/main.go)
+      log_ok "thinking E2E complete -- output: ${out_dir}/"
+      ls -la "${out_dir}/"
+      ;;
+    agent)
+      local log_file="${out_dir}/agent_e2e_run.log"
+      local trace_file="${out_dir}/agent_otel_spans.json"
+      local prompt="${2:-}"
+      if [[ -z "${prompt}" ]]; then
+        prompt="Echo 'hello' to verify tool calling works, then list the available payload categories."
+      fi
+      log_info "running full agent E2E"
+      (cd "${REPO_ROOT}/apps/golem" && \
+        GOLEM_TRACE_FILE="${trace_file}" \
+        GOLEM_TRACE_CAPTURE_CONTENT=true \
+        go run ./cmd/golem/main.go "${prompt}") > "${log_file}" 2>&1 || true
+      log_ok "agent E2E complete -- output: ${out_dir}/"
+      ls -la "${out_dir}/"
+      ;;
+    *)
+      log_err "unknown E2E harness: ${harness}"
+      echo "Available: thinking, agent"
+      exit 1
+      ;;
+  esac
+}
+
 main() {
   local cmd="${1:-help}"
   shift || true
@@ -326,6 +373,7 @@ main() {
       ;;
     lint) cmd_lint ;;
     test) cmd_test ;;
+    e2e) cmd_e2e "$@" ;;
     help|-h|--help) usage ;;
     *)
       log_err "unknown command: ${cmd}"
