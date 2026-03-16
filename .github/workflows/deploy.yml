@@ -9,6 +9,11 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+  GCP_REPOSITORY: ${{ secrets.GCP_REPOSITORY }}
+
 jobs:
   detect-changes:
     name: Detect changes
@@ -47,6 +52,8 @@ jobs:
         id: vars
         run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+  # --- Build jobs (parallel, conditional) ---
+
   build-golem:
     needs: detect-changes
     if: needs.detect-changes.outputs.golem_changed == 'true'
@@ -58,10 +65,181 @@ jobs:
       image_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
     secrets: inherit
 
-  test-deploy:
-    name: Test deploy step
+  build-observer:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.observer_changed == 'true'
+    uses: ./.github/workflows/build-service.yml
+    with:
+      service_name: observer
+      service_path: ./apps/observer
+      image_name: golem-observer
+      image_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
+    secrets: inherit
+
+  build-scraper:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.scraper_changed == 'true'
+    uses: ./.github/workflows/build-service.yml
+    with:
+      service_name: scraper
+      service_path: ./apps/scraper
+      image_name: golem-scraper
+      image_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
+    secrets: inherit
+
+  build-demo-target:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.demo_target_changed == 'true'
+    uses: ./.github/workflows/build-service.yml
+    with:
+      service_name: demo-target
+      service_path: ./apps/demo-target
+      image_name: golem-demo-target
+      image_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
+    secrets: inherit
+
+  # --- Cleanup jobs (after builds) ---
+
+  cleanup-golem:
     needs: [detect-changes, build-golem]
-    if: always()
+    if: needs.detect-changes.outputs.golem_changed == 'true'
+    uses: ./.github/workflows/cleanup-gar.yml
+    with:
+      service_name: golem
+      image_name: golem-agent
+      current_sha_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
+    secrets: inherit
+
+  cleanup-observer:
+    needs: [detect-changes, build-observer]
+    if: needs.detect-changes.outputs.observer_changed == 'true'
+    uses: ./.github/workflows/cleanup-gar.yml
+    with:
+      service_name: observer
+      image_name: golem-observer
+      current_sha_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
+    secrets: inherit
+
+  cleanup-scraper:
+    needs: [detect-changes, build-scraper]
+    if: needs.detect-changes.outputs.scraper_changed == 'true'
+    uses: ./.github/workflows/cleanup-gar.yml
+    with:
+      service_name: scraper
+      image_name: golem-scraper
+      current_sha_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
+    secrets: inherit
+
+  cleanup-demo-target:
+    needs: [detect-changes, build-demo-target]
+    if: needs.detect-changes.outputs.demo_target_changed == 'true'
+    uses: ./.github/workflows/cleanup-gar.yml
+    with:
+      service_name: demo-target
+      image_name: golem-demo-target
+      current_sha_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
+    secrets: inherit
+
+  # --- Deploy to VPS ---
+
+  deploy:
+    name: Deploy to GCE VM
+    needs:
+      - detect-changes
+      - build-golem
+      - build-observer
+      - build-scraper
+      - build-demo-target
+    if: |
+      always() &&
+      needs.detect-changes.outputs.any_changed == 'true' &&
+      !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "Deploy step reached, any_changed=${{ needs.detect-changes.outputs.any_changed }}"
+      - uses: actions/checkout@v4
+
+      - name: Ensure app directory exists
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          script: mkdir -p ~/golem
+
+      - name: Copy compose file to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "~/golem/"
+
+      - name: Inject .env.prod on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          script: |
+            cat > ~/golem/.env.prod << 'ENVEOF'
+            GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+            DEFAULT_LLM_MODEL=gemini-3-flash-preview
+            GOLEM_LOG_LEVEL=info
+            GOLEM_TIMEOUT_SECONDS=120
+            GOLEM_THINKING_LEVEL=medium
+            DOMAIN=${{ secrets.DOMAIN }}
+            ACME_EMAIL=${{ secrets.ACME_EMAIL }}
+            ENVEOF
+            chmod 600 ~/golem/.env.prod
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          SHA: ${{ needs.detect-changes.outputs.git_sha_short }}
+          GOLEM_CHANGED: ${{ needs.detect-changes.outputs.golem_changed }}
+          OBSERVER_CHANGED: ${{ needs.detect-changes.outputs.observer_changed }}
+          SCRAPER_CHANGED: ${{ needs.detect-changes.outputs.scraper_changed }}
+          DEMO_TARGET_CHANGED: ${{ needs.detect-changes.outputs.demo_target_changed }}
+          REGISTRY_URL: "${{ secrets.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}"
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          envs: SHA,GOLEM_CHANGED,OBSERVER_CHANGED,SCRAPER_CHANGED,DEMO_TARGET_CHANGED,REGISTRY_URL
+          script: |
+            set -e
+            cd ~/golem
+
+            export PATH="/snap/bin:$PATH"
+
+            echo "Authenticating Docker with GAR..."
+            gcloud auth configure-docker "${{ secrets.GCP_LOCATION }}-docker.pkg.dev" --quiet
+
+            resolve_tag() {
+              local svc="$1" changed="$2"
+              if [ "$changed" = "true" ]; then
+                echo "$SHA"
+              else
+                local current
+                current=$(docker inspect --format='{{.Config.Image}}' "golem-${svc}-1" 2>/dev/null | awk -F: '{print $NF}') || true
+                echo "${current:-latest}"
+              fi
+            }
+
+            export GOLEM_IMAGE="${REGISTRY_URL}/golem-agent:$(resolve_tag golem "$GOLEM_CHANGED")"
+            export OBSERVER_IMAGE="${REGISTRY_URL}/golem-observer:$(resolve_tag observer "$OBSERVER_CHANGED")"
+            export SCRAPER_IMAGE="${REGISTRY_URL}/golem-scraper:$(resolve_tag scraper "$SCRAPER_CHANGED")"
+            export DEMO_TARGET_IMAGE="${REGISTRY_URL}/golem-demo-target:$(resolve_tag demo-target "$DEMO_TARGET_CHANGED")"
+
+            echo "Images: golem=${GOLEM_IMAGE} observer=${OBSERVER_IMAGE}"
+
+            docker compose -f docker-compose.prod.yml --env-file .env.prod pull
+            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --remove-orphans
+
+            echo "Pruning old images..."
+            docker image prune -f
+
+            echo "Deploy complete."
+            docker compose -f docker-compose.prod.yml --env-file .env.prod ps
