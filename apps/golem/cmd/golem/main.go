@@ -24,10 +24,21 @@ func main() {
 
 	ctx := context.Background()
 
+	llmCfg := golemAdk.LoadLLMConfig()
+
 	llm, err := golemAdk.NewModel(ctx, logger)
 	if err != nil {
 		slog.Error("failed to initialize model", "error", err)
 		os.Exit(1)
+	}
+
+	generateCfg := llmCfg.GenerateContentConfig()
+	if llmCfg.ThinkingActive() {
+		slog.Info("thinking mode enabled",
+			"level", llmCfg.ThinkingLevel,
+			"budget", llmCfg.ThinkingBudget,
+			"include_thoughts", llmCfg.IncludeThoughts,
+		)
 	}
 
 	tools, hasBrowse, err := buildTools(ctx)
@@ -38,7 +49,7 @@ func main() {
 
 	callbacks := golemAdk.NewCallbacks(logger)
 
-	auditor, err := golemAdk.NewAuditor(llm, tools,
+	auditor, err := golemAdk.NewAuditor(llm, tools, generateCfg,
 		golemAdk.WithBeforeAgent(callbacks.BeforeAgent),
 		golemAdk.WithAfterAgent(callbacks.AfterAgent),
 		golemAdk.WithBeforeModel(callbacks.BeforeModel),
@@ -99,13 +110,20 @@ func main() {
 					"result", part.FunctionResponse.Response,
 				)
 			}
+			if part.Thought && part.Text != "" {
+				slog.Info("model thought",
+					"text_len", len(part.Text),
+					"text", truncate(part.Text, 500),
+				)
+				continue
+			}
 			if part.Text != "" {
 				if event.IsFinalResponse() {
 					fmt.Println("\n--- AGENT RESPONSE ---")
 					fmt.Println(part.Text)
 					fmt.Println("--- END ---")
 				} else {
-					slog.Info("agent thinking", "text", part.Text)
+					slog.Info("agent intermediate", "text", part.Text)
 				}
 			}
 		}
@@ -155,4 +173,11 @@ func buildTools(ctx context.Context) ([]tool.Tool, bool, error) {
 
 	tools = append(tools, supacrawlTools...)
 	return tools, true, nil
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

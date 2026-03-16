@@ -40,6 +40,7 @@ Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusiv
 | `artifact.InMemoryService` | `runner.go` | Screenshot persistence (wired, save calls deferred to v0.7) |
 | Lifecycle callbacks | `callbacks.go` | Structured logging of agent/model events |
 | Functional options | `agent.go` | `WithBeforeAgent`, `WithAfterAgent`, `WithBeforeModel`, `WithAfterModel` |
+| `ThinkingConfig` | `config.go` + `agent.go` | Gemini 3 thinking mode (medium by default), thought logging |
 
 ### session state keys
 
@@ -106,6 +107,9 @@ Optional variables:
 - `FALLBACK_LLM_MODEL` (default: gemini-3.1-flash-lite-preview)
 - `GOLEM_LOG_LEVEL` (default: info)
 - `GOLEM_TIMEOUT_SECONDS` (default: 120)
+- `GOLEM_THINKING_LEVEL` (default: medium) -- Gemini 3 thinking depth: low, medium, high, minimal
+- `GOLEM_INCLUDE_THOUGHTS` (default: true) -- return thought summaries in model responses
+- `GOLEM_THINKING_BUDGET` (default: 0) -- token budget for Gemini 2.5 models (0 = disabled)
 
 ## local development
 

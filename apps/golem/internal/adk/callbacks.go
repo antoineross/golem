@@ -97,11 +97,15 @@ func (cb *Callbacks) AfterModel(ctx agent.CallbackContext, resp *model.LLMRespon
 	} else {
 		toolCalls := 0
 		hasText := false
+		thoughtParts := 0
 		for _, part := range resp.Content.Parts {
 			if part.FunctionCall != nil {
 				toolCalls++
 			}
-			if part.Text != "" {
+			if part.Thought {
+				thoughtParts++
+			}
+			if part.Text != "" && !part.Thought {
 				hasText = true
 			}
 		}
@@ -110,6 +114,7 @@ func (cb *Callbacks) AfterModel(ctx agent.CallbackContext, resp *model.LLMRespon
 			"agent", ctx.AgentName(),
 			"tool_calls", toolCalls,
 			"has_text", hasText,
+			"thought_parts", thoughtParts,
 			"role", resp.Content.Role,
 		)
 	}
