@@ -78,9 +78,9 @@ The `#{issue_number}` is **mandatory** for deferrals.
 
 **Complete Step 4b BEFORE Step 4 for any deferred items.** Create or identify the GH issue first, then write the reply with the issue number.
 
-## Step 5: Resolve Fixed Threads
+## Step 5: Resolve Threads
 
-After replying, resolve all review threads where the verdict was **fix**. Use GraphQL:
+After replying, resolve review threads using GraphQL:
 
 ```bash
 gh api graphql -f query='
@@ -102,7 +102,16 @@ mutation {
 }'
 ```
 
-Do NOT resolve threads with verdict **reject** or **defer**.
+### What to resolve
+
+- **fix**: Always resolve after the fix is committed.
+- **reject**: Resolve after replying with the rejection rationale. The thread is settled.
+- **defer**: Resolve ONLY IF the reply contains a concrete `#{issue_number}`. The issue is now the tracking mechanism, not the thread.
+
+### What to keep open
+
+- Deferred items where no issue has been created yet (this should not happen -- see Step 4b).
+- Items that need the human reviewer's input or decision before proceeding.
 
 ## Step 6: Summarize to User
 

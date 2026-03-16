@@ -193,9 +193,12 @@ pre-commit run --all-files
 
 ```
 [critical] Description of bug/risk with evidence and concrete fix.
+[high] Logic errors, silent failure paths, broken workflow gates.
 [suggestion] Non-blocking improvement with rationale.
 [nit] Small non-blocking polish item.
 ```
+
+Note: `.gemini/styleguide.md` restricts Gemini Code Assist automated reviews to `[critical]` and `[high]` only. This guide is for comprehensive agent-driven manual reviews, where `[suggestion]` and `[nit]` are useful for lower-severity observations.
 
 ---
 
