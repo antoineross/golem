@@ -243,11 +243,12 @@ cmd_env_list() {
   load_env
 
   local required_vars=(
-    "GEMINI_API_KEY"
+    "GOOGLE_API_KEY"
     "SUPACRAWL_API_URL"
   )
   local optional_vars=(
-    "GEMINI_MODEL"
+    "DEFAULT_LLM_MODEL"
+    "FALLBACK_LLM_MODEL"
     "GOLEM_LOG_LEVEL"
     "GOLEM_TIMEOUT_SECONDS"
   )

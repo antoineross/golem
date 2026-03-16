@@ -28,12 +28,12 @@ Monorepo layout:
   - Provides `/v1/scrape`, `/v1/screenshots` endpoints
   - LightPanda browser automation, Redis task queue
 
-Key constraint (ADK-Go v0.3.0): `OutputSchema` and `Tools` are mutually exclusive. Because this agent uses tools, structured output must use the Regex Parser pattern.
+Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusive. Because this agent uses tools, structured output must use the Regex Parser pattern.
 
 ## tech stack
 
 - Brain: Google Gemini 3 Flash (reasoning + multimodal vision)
-- Orchestration: Google ADK-Go v0.3.0 (llmagent pattern)
+- Orchestration: Google ADK-Go v0.6.0 (llmagent pattern)
 - Perception: Supacrawler (Playwright-powered API for screenshots and DOM)
 - Language: Go 1.23+
 - Hosting: Google Cloud (Cloud Run)
@@ -55,11 +55,12 @@ Key constraint (ADK-Go v0.3.0): `OutputSchema` and `Tools` are mutually exclusiv
 - Local development loads `.env` as base and then applies `.env.local` overrides.
 
 Required variables:
-- `GEMINI_API_KEY`
-- `SUPACRAWL_API_URL`
+- `GOOGLE_API_KEY` (or `GEMINI_API_KEY` as fallback)
+- `SUPACRAWL_API_URL` (local: `http://localhost:8082`, docker: `http://scraper:8081`)
 
 Optional variables:
-- `GEMINI_MODEL` (default: gemini-3-flash)
+- `DEFAULT_LLM_MODEL` (default: gemini-3-flash-preview)
+- `FALLBACK_LLM_MODEL` (default: gemini-3.1-flash-lite-preview)
 - `GOLEM_LOG_LEVEL` (default: info)
 - `GOLEM_TIMEOUT_SECONDS` (default: 120)
 

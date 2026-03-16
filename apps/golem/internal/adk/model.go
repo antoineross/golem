@@ -13,7 +13,7 @@ import (
 func NewModel(ctx context.Context, logger *slog.Logger) (model.LLM, error) {
 	cfg := LoadLLMConfig()
 	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is required")
+		return nil, fmt.Errorf("GOOGLE_API_KEY or GEMINI_API_KEY is required")
 	}
 
 	clientCfg := &genai.ClientConfig{

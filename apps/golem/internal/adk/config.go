@@ -9,8 +9,12 @@ type LLMConfig struct {
 }
 
 func LoadLLMConfig() LLMConfig {
+	apiKey := os.Getenv("GOOGLE_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("GEMINI_API_KEY")
+	}
 	return LLMConfig{
-		APIKey:        envOr("GEMINI_API_KEY", os.Getenv("GOOGLE_API_KEY")),
+		APIKey:        apiKey,
 		DefaultModel:  envOr("DEFAULT_LLM_MODEL", "gemini-3-flash-preview"),
 		FallbackModel: envOr("FALLBACK_LLM_MODEL", "gemini-3.1-flash-lite-preview"),
 	}
