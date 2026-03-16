@@ -38,7 +38,7 @@ function buildScenarios(demoTargetUrl: string): Record<string, ScenarioConfig> {
       harness: "level1b",
       description: "Navigate to /system-health, take a screenshot, analyze canvas-rendered alerts for hidden API endpoints, then call those endpoints to check for data leaks.",
       prompt: `You are auditing ${demoTargetUrl}. Navigate to ${demoTargetUrl}/system-health, screenshot the page, analyze visual content for hidden API endpoints, then call them.`,
-      tools: ["echo", "payload", "browse", "screenshot", "find_hidden"],
+      tools: ["echo", "payload", "browse", "screenshot", "find_hidden", "api_call"],
       requires_scraper: true,
     },
     level2: {
@@ -49,12 +49,30 @@ function buildScenarios(demoTargetUrl: string): Record<string, ScenarioConfig> {
       tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
       requires_scraper: true,
     },
+    level3: {
+      name: "Level 3: Config Leak to Data Exfiltration",
+      harness: "level3",
+      description: "Discover leaked API key in frontend config, use it to authenticate against debug endpoints, and exfiltrate sensitive data. Tests hypothesis-driven investigation: Observe -> Hypothesize -> Test -> Exploit -> Report.",
+      prompt: `You are a security auditor investigating ${demoTargetUrl} for data exposure vulnerabilities.
+
+Step 1 - RECONNAISSANCE: Browse ${demoTargetUrl}. Take a screenshot of the homepage for evidence. Use find_hidden to scan for hidden elements, leaked config, and debug attributes in the HTML source.
+
+Step 2 - DISCOVERY: Look carefully for any API keys, debug flags, or endpoint references in the page source (especially script tags, data attributes, HTML comments). State each finding clearly.
+
+Step 3 - HYPOTHESIS: Based on what you found, form a hypothesis about what debug endpoints might exist and how discovered credentials could be used.
+
+Step 4 - EXPLOITATION: Use api_call to test your hypotheses. Try the discovered endpoints with the credentials you found (e.g., set the API key as an X-Debug-Key header). If a response reveals more endpoints, follow those leads. Take screenshots of key pages as visual evidence.
+
+Step 5 - REPORT: Produce a structured vulnerability report for each finding. Include severity, title, evidence (API response data and screenshots), and the full exploit chain.`,
+      tools: ["echo", "payload", "browse", "screenshot", "find_hidden", "api_call"],
+      requires_scraper: true,
+    },
     agent: {
       name: "Full Agent Run",
       harness: "agent",
       description: "Runs the full security auditor agent against the default target.",
       prompt: "Browse https://example.com and describe what you see.",
-      tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
+      tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden", "api_call"],
       requires_scraper: true,
     },
   };

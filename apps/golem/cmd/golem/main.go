@@ -218,16 +218,21 @@ func buildTools(ctx context.Context) ([]tool.Tool, bool, error) {
 		return nil, false, fmt.Errorf("create payload tool: %w", err)
 	}
 
-	tools := []tool.Tool{echoTool, payloadTool}
+	apiCallTool, err := golemAdk.NewAPICallTool()
+	if err != nil {
+		return nil, false, fmt.Errorf("create api_call tool: %w", err)
+	}
+
+	tools := []tool.Tool{echoTool, payloadTool, apiCallTool}
 
 	client, err := supacrawl.NewClient()
 	if err != nil {
-		slog.Warn("supacrawl not configured, running with echo and payload tools only", "error", err)
+		slog.Warn("supacrawl not configured, running with base tools only", "error", err)
 		return tools, false, nil
 	}
 
 	if err := client.Health(ctx); err != nil {
-		slog.Warn("supacrawl not reachable, running with echo and payload tools only", "error", err)
+		slog.Warn("supacrawl not reachable, running with base tools only", "error", err)
 		return tools, false, nil
 	}
 
