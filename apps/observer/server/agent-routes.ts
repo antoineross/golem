@@ -38,7 +38,7 @@ function buildScenarios(demoTargetUrl: string): Record<string, ScenarioConfig> {
       harness: "level1b",
       description: "Navigate to /system-health, take a screenshot, analyze canvas-rendered alerts for hidden API endpoints, then call those endpoints to check for data leaks.",
       prompt: `You are auditing ${demoTargetUrl}. Navigate to ${demoTargetUrl}/system-health, screenshot the page, analyze visual content for hidden API endpoints, then call them.`,
-      tools: ["echo", "payload", "browse", "screenshot", "find_hidden"],
+      tools: ["echo", "payload", "browse", "screenshot", "find_hidden", "api_call"],
       requires_scraper: true,
     },
     level2: {
@@ -49,12 +49,20 @@ function buildScenarios(demoTargetUrl: string): Record<string, ScenarioConfig> {
       tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
       requires_scraper: true,
     },
+    level3: {
+      name: "Level 3: Config Leak to Data Exfiltration",
+      harness: "level3",
+      description: "Discover leaked API key in frontend config, use it to authenticate against debug endpoints, and exfiltrate sensitive data. Tests hypothesis-driven investigation: Observe -> Hypothesize -> Test -> Exploit -> Report.",
+      prompt: `You are a security auditor investigating ${demoTargetUrl} for data exposure vulnerabilities. Start by browsing the homepage. Examine the page source carefully for any leaked configuration, API keys, or debug information. If you find credentials or API keys, hypothesize what endpoints they might unlock. Use the api_call tool with appropriate headers to test your hypotheses. Follow any leads you discover -- if a debug config endpoint reveals more endpoints, investigate those too. Document the full exploit chain with evidence.`,
+      tools: ["echo", "payload", "browse", "screenshot", "find_hidden", "api_call"],
+      requires_scraper: true,
+    },
     agent: {
       name: "Full Agent Run",
       harness: "agent",
       description: "Runs the full security auditor agent against the default target.",
       prompt: "Browse https://example.com and describe what you see.",
-      tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
+      tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden", "api_call"],
       requires_scraper: true,
     },
   };

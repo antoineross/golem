@@ -9,6 +9,7 @@ export default function HomePage() {
       <a href="/admin" style={{ display: "none" }}>Admin Panel</a>
 
       <div dangerouslySetInnerHTML={{ __html: "<!-- Debug: admin bypass available at /admin?bypass=true -->" }} />
+      <div dangerouslySetInnerHTML={{ __html: "<!-- TODO: remove debug API before production. Config at /api/v1/debug/config requires X-Debug-Key header. -->" }} />
 
       {/* Console log leak -- vuln: visible in browser console */}
       <DebugLogger />

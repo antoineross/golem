@@ -2,8 +2,11 @@ package adk
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"golem/internal/supacrawl"
@@ -288,6 +291,90 @@ func NewClickTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool, err
 	)
 }
 
+type apiCallArgs struct {
+	URL     string            `json:"url" jsonschema:"The full URL of the API endpoint to call"`
+	Method  string            `json:"method,omitempty" jsonschema:"HTTP method (GET, POST, PUT, DELETE). Defaults to GET."`
+	Headers map[string]string `json:"headers,omitempty" jsonschema:"HTTP headers to include in the request (e.g. authorization, content-type)"`
+	Body    string            `json:"body,omitempty" jsonschema:"Request body for POST/PUT requests"`
+}
+
+type apiCallResult struct {
+	URL        string `json:"url"`
+	StatusCode int    `json:"status_code"`
+	Body       string `json:"body"`
+}
+
+// NewAPICallTool creates a tool for making direct HTTP API requests with custom headers.
+// Used when the agent discovers API endpoints and needs to test them with credentials or tokens.
+func NewAPICallTool(guard ...*ToolGuard) (tool.Tool, error) {
+	var g *ToolGuard
+	if len(guard) > 0 {
+		g = guard[0]
+	}
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+
+	apiCallFn := func(tc tool.Context, args apiCallArgs) (apiCallResult, error) {
+		if g != nil {
+			if warn, err := g.RecordCall(); err != nil {
+				return apiCallResult{}, err
+			} else if warn != "" {
+				slog.Warn(warn, "tool", "api_call")
+			}
+		}
+
+		method := strings.ToUpper(args.Method)
+		if method == "" {
+			method = "GET"
+		}
+
+		var bodyReader io.Reader
+		if args.Body != "" {
+			bodyReader = strings.NewReader(args.Body)
+		}
+
+		req, err := http.NewRequestWithContext(tc, method, args.URL, bodyReader)
+		if err != nil {
+			return apiCallResult{}, fmt.Errorf("api_call create request: %w", err)
+		}
+
+		for k, v := range args.Headers {
+			req.Header.Set(k, v)
+		}
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			if g != nil {
+				g.RecordFailure("api_call", args.URL)
+			}
+			return apiCallResult{}, fmt.Errorf("api_call %s %s: %w", method, args.URL, err)
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 32*1024))
+		if err != nil {
+			return apiCallResult{}, fmt.Errorf("api_call read response: %w", err)
+		}
+
+		if err := stateAppendString(tc.State(), StateKeyVisitedURLs, args.URL); err != nil {
+			slog.Warn("failed to update visited_urls state", "url", args.URL, "error", err)
+		}
+
+		return apiCallResult{
+			URL:        args.URL,
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}, nil
+	}
+
+	return functiontool.New(
+		functiontool.Config{
+			Name:        "api_call",
+			Description: "Make a direct HTTP API request with custom headers, method, and body. Use this to test discovered API endpoints with authentication tokens, API keys, or other headers. Returns the response status code and body.",
+		},
+		apiCallFn,
+	)
+}
+
 // NewSupacrawlTools creates all Supacrawl-powered tools for the agent.
 // A shared ToolGuard enforces per-tool retry limits (3 per URL) and a
 // global step budget (50 tool calls).
@@ -322,6 +409,13 @@ func NewSupacrawlTools(client *supacrawl.Client) ([]tool.Tool, error) {
 		errs = append(errs, fmt.Sprintf("find_hidden: %v", err))
 	} else {
 		tools = append(tools, findHidden)
+	}
+
+	apiCall, err := NewAPICallTool(guard)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("api_call: %v", err))
+	} else {
+		tools = append(tools, apiCall)
 	}
 
 	if len(errs) > 0 {

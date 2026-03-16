@@ -8,4 +8,5 @@ const Tools = `## Tool Usage Guidelines
 - Use "click" to interact with elements and observe state changes.
 - Use "browse" with include_html=true when you need raw HTML for manual inspection beyond what find_hidden detects.
 - Use "payload" to generate appropriate test inputs for the vulnerability class you are testing.
+- Use "api_call" to make authenticated HTTP requests to discovered API endpoints. When you find API keys, tokens, or credentials, use this tool to test endpoints with proper authentication headers (e.g. X-Debug-Key, Authorization, etc).
 - Always take a screenshot after discovering something significant as evidence.`

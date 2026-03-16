@@ -20,6 +20,8 @@ export function ConfigScript({ config }: ConfigScriptProps) {
               apiKey: config.apiKey,
               debugMode: config.debugMode,
               adminEmail: config.adminEmail,
+              apiBase: "/api/v1",
+              debugEndpoint: "/api/v1/debug/config",
             },
           },
         }),
