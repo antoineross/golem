@@ -38,6 +38,9 @@ function relativeTime(dateStr: string): string {
 
 const harnessColors: Record<string, string> = {
   level0: "bg-blue-500/15 text-blue-400 border-blue-500/20",
+  level1a: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+  level1b: "bg-orange-500/15 text-orange-400 border-orange-500/20",
+  level2: "bg-red-500/15 text-red-400 border-red-500/20",
   agent: "bg-green-500/15 text-green-400 border-green-500/20",
   thinking: "bg-purple-500/15 text-purple-400 border-purple-500/20",
   trace: "bg-muted text-muted-foreground border-border",
@@ -108,13 +111,14 @@ function SidebarTraceItem({
 type MainView = "timeline" | "raw";
 
 export default function App() {
-  const { files, loading: filesLoading } = useTraceList();
+  const { files, loading: filesLoading, refresh: refreshFiles } = useTraceList();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const { trace, raw, loading, error, reload } = useTrace(selectedFile);
 
   const [liveTrace, setLiveTrace] = useState<TraceSummary | null>(null);
   const [liveRaw, setLiveRaw] = useState<string | null>(null);
   const [liveEnabled, setLiveEnabled] = useState(false);
+  const [liveTraceFile, setLiveTraceFile] = useState<string | null>(null);
   const [replayMode, setReplayMode] = useState(false);
   const [replayEvents, setReplayEvents] = useState<TimelineEvent[]>([]);
   const [mainView, setMainView] = useState<MainView>("timeline");
@@ -124,7 +128,7 @@ export default function App() {
     setLiveRaw(r);
   }, []);
 
-  useTraceSSE(handleSSE, liveEnabled);
+  useTraceSSE(handleSSE, liveEnabled, liveTraceFile);
 
   const activeTrace = liveEnabled && liveTrace ? liveTrace : trace;
   const activeRaw = liveEnabled && liveRaw ? liveRaw : raw;
@@ -132,13 +136,20 @@ export default function App() {
   const handleFileSelect = (path: string) => {
     setSelectedFile(path);
     setLiveEnabled(false);
+    setLiveTraceFile(null);
     setReplayMode(false);
     setMainView("timeline");
   };
 
-  const handleRunStarted = () => {
+  const handleRunStarted = (traceFile: string) => {
+    setLiveTraceFile(traceFile);
     setLiveEnabled(true);
+    setLiveTrace(null);
+    setLiveRaw(null);
     setReplayMode(false);
+    setMainView("timeline");
+    setTimeout(refreshFiles, 3000);
+    setTimeout(refreshFiles, 10000);
   };
 
   const handleReplayEvents = useCallback((events: TimelineEvent[]) => {
@@ -231,7 +242,7 @@ export default function App() {
       <div className="flex flex-1 min-h-0">
         <aside className="w-[280px] shrink-0 border-r border-border bg-muted/50 flex flex-col">
           <div className="p-3 border-b border-border">
-            <ScenarioLauncher onRunStarted={handleRunStarted} />
+            <ScenarioLauncher onRunStarted={handleRunStarted} onRunComplete={refreshFiles} />
           </div>
 
           <div className="px-3 pt-3 pb-1">

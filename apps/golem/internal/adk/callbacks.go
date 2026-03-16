@@ -1,7 +1,10 @@
 package adk
 
 import (
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"google.golang.org/adk/agent"
@@ -10,17 +13,20 @@ import (
 )
 
 // Callbacks holds lifecycle hooks for structured logging of agent events.
-// These feed into the reasoning panel (v0.7.1) by emitting structured log
-// entries at each phase of the agent loop.
+// When a TraceWriter is provided, callbacks also emit rich trace events
+// for the Observer UI (LLM prompts, model metadata, usage stats).
 type Callbacks struct {
 	logger *slog.Logger
+	tw     *TraceWriter
+	model  string
+	start  time.Time
 }
 
-func NewCallbacks(logger *slog.Logger) *Callbacks {
+func NewCallbacks(logger *slog.Logger, tw *TraceWriter, modelName string) *Callbacks {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Callbacks{logger: logger}
+	return &Callbacks{logger: logger, tw: tw, model: modelName}
 }
 
 // BeforeAgent logs the start of an agent invocation with current session state.
@@ -34,6 +40,11 @@ func (cb *Callbacks) BeforeAgent(ctx agent.CallbackContext) (*genai.Content, err
 		"target_url", targetURL,
 		"visited_count", visitedCount,
 	)
+
+	cb.tw.Write(TraceEvent{
+		Type:  "agent_start",
+		Agent: ctx.AgentName(),
+	})
 
 	return nil, nil
 }
@@ -52,10 +63,16 @@ func (cb *Callbacks) AfterAgent(ctx agent.CallbackContext) (*genai.Content, erro
 		"screenshots_taken", len(screenshots),
 	)
 
+	cb.tw.Write(TraceEvent{
+		Type:  "agent_end",
+		Agent: ctx.AgentName(),
+	})
+
 	return nil, nil
 }
 
-// BeforeModel logs the prompt being sent to Gemini with tool count.
+// BeforeModel emits the full LLM prompt to the trace writer so the Observer
+// can display what was sent to the model.
 func (cb *Callbacks) BeforeModel(ctx agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
 	toolCount := 0
 	if req.Config != nil && req.Config.Tools != nil {
@@ -75,21 +92,40 @@ func (cb *Callbacks) BeforeModel(ctx agent.CallbackContext, req *model.LLMReques
 		"agent", ctx.AgentName(),
 		"content_parts", contentParts,
 		"tools_available", toolCount,
-		"timestamp", time.Now().UTC().Format(time.RFC3339),
 	)
+
+	cb.start = time.Now()
+
+	promptText := extractPromptText(req)
+	cb.tw.Write(TraceEvent{
+		Type:         "llm_request",
+		Agent:        ctx.AgentName(),
+		Model:        cb.model,
+		PromptParts:  contentParts,
+		ToolsAvail:   toolCount,
+		ResponseText: promptText,
+	})
 
 	return nil, nil
 }
 
-// AfterModel logs the model response including whether it contains tool
-// calls or a final text response. Passes through the original response
-// and error to avoid suppressing them.
+// AfterModel emits model response metadata including usage stats, tool call
+// count, and thinking token info. Passes through the original response.
 func (cb *Callbacks) AfterModel(ctx agent.CallbackContext, resp *model.LLMResponse, respErr error) (*model.LLMResponse, error) {
+	durationMs := int(time.Since(cb.start).Milliseconds())
+
 	if respErr != nil {
 		cb.logger.Error("model response error",
 			"agent", ctx.AgentName(),
 			"error", respErr,
 		)
+		cb.tw.Write(TraceEvent{
+			Type:         "llm_response",
+			Agent:        ctx.AgentName(),
+			Model:        cb.model,
+			ResponseText: fmt.Sprintf("error: %v", respErr),
+			DurationMs:   durationMs,
+		})
 	} else if resp == nil || resp.Content == nil {
 		cb.logger.Warn("model returned empty response",
 			"agent", ctx.AgentName(),
@@ -117,7 +153,55 @@ func (cb *Callbacks) AfterModel(ctx agent.CallbackContext, resp *model.LLMRespon
 			"thought_parts", thoughtParts,
 			"role", resp.Content.Role,
 		)
+
+		var inputTok, outputTok, thinkTok int
+		if resp.UsageMetadata != nil {
+			inputTok = int(resp.UsageMetadata.PromptTokenCount)
+			outputTok = int(resp.UsageMetadata.CandidatesTokenCount)
+			thinkTok = int(resp.UsageMetadata.ThoughtsTokenCount)
+		}
+
+		cb.tw.Write(TraceEvent{
+			Type:         "llm_response_meta",
+			Agent:        ctx.AgentName(),
+			Model:        cb.model,
+			InputTokens:  inputTok,
+			OutputTokens: outputTok,
+			ThinkTokens:  thinkTok,
+			DurationMs:   durationMs,
+		})
 	}
 
 	return resp, respErr
+}
+
+func extractPromptText(req *model.LLMRequest) string {
+	if req.Contents == nil {
+		return ""
+	}
+	var parts []string
+	for _, content := range req.Contents {
+		role := string(content.Role)
+		for _, part := range content.Parts {
+			if part.Text != "" {
+				parts = append(parts, fmt.Sprintf("[%s] %s", role, part.Text))
+			}
+			if part.FunctionCall != nil {
+				args, _ := json.Marshal(part.FunctionCall.Args)
+				parts = append(parts, fmt.Sprintf("[%s] call:%s(%s)", role, part.FunctionCall.Name, string(args)))
+			}
+			if part.FunctionResponse != nil {
+				resp, _ := json.Marshal(part.FunctionResponse.Response)
+				parts = append(parts, fmt.Sprintf("[%s] result:%s -> %s", role, part.FunctionResponse.Name, truncateString(string(resp), 500)))
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

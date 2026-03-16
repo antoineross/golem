@@ -74,19 +74,27 @@ interface TraceFileMeta {
 }
 
 function deriveDisplayName(fileName: string, filePath: string, modified: string): string {
-  const lower = filePath.toLowerCase();
-  let harness = "trace";
-  if (lower.includes("level0")) harness = "Level 0";
-  else if (lower.includes("/thinking/")) harness = "Thinking";
-  else if (lower.includes("/agent/")) harness = "Agent";
-
+  const harness = deriveHarness(filePath);
+  const labels: Record<string, string> = {
+    level0: "Level 0",
+    level1a: "Level 1a",
+    level1b: "Level 1b",
+    level2: "Level 2",
+    thinking: "Thinking",
+    agent: "Agent",
+    trace: "Trace",
+  };
+  const label = labels[harness] ?? harness;
   const date = new Date(modified);
   const time = date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-  return `${harness} run -- ${time}`;
+  return `${label} run -- ${time}`;
 }
 
 function deriveHarness(filePath: string): string {
   const lower = filePath.toLowerCase();
+  if (lower.includes("level1a")) return "level1a";
+  if (lower.includes("level1b")) return "level1b";
+  if (lower.includes("level2")) return "level2";
   if (lower.includes("level0")) return "level0";
   if (lower.includes("/thinking/")) return "thinking";
   if (lower.includes("/agent/")) return "agent";
@@ -158,8 +166,19 @@ app.get("/api/traces/:file{.+}", (c) => {
 });
 
 app.get("/api/traces/stream", (c) => {
+  const fileParam = c.req.query("file");
+  const targetFile = fileParam ? path.resolve(fileParam) : TRACE_FILE;
+
+  if (fileParam) {
+    const resolvedTraceDir = path.resolve(TRACE_DIR);
+    if (!targetFile.startsWith(resolvedTraceDir + path.sep) && targetFile !== path.resolve(TRACE_FILE)) {
+      return c.json({ error: "access denied" }, 403);
+    }
+  }
+
   return streamSSE(c, async (stream) => {
     let lastSize = 0;
+    let lastEventsSize = 0;
     let running = true;
 
     stream.onAbort(() => {
@@ -168,12 +187,13 @@ app.get("/api/traces/stream", (c) => {
 
     while (running) {
       try {
-        const stat = fs.statSync(TRACE_FILE);
+        const stat = fs.statSync(targetFile);
         if (stat.size !== lastSize) {
           lastSize = stat.size;
-          const content = readTraceFile(TRACE_FILE);
+          const content = readTraceFile(targetFile);
           if (content) {
-            await stream.writeSSE({ data: content, event: "trace" });
+            const events = readEventsFile(targetFile);
+            await stream.writeSSE({ data: JSON.stringify({ content, events }), event: "trace" });
           }
         }
       } catch (e: unknown) {
@@ -181,7 +201,23 @@ app.get("/api/traces/stream", (c) => {
           console.warn(`trace file stat error:`, e);
         }
       }
-      await stream.sleep(2000);
+
+      try {
+        const eventsPath = eventsPathForTrace(targetFile);
+        const stat = fs.statSync(eventsPath);
+        if (stat.size !== lastEventsSize) {
+          lastEventsSize = stat.size;
+          const content = readTraceFile(targetFile);
+          if (content) {
+            const events = readEventsFile(targetFile);
+            await stream.writeSSE({ data: JSON.stringify({ content, events }), event: "trace" });
+          }
+        }
+      } catch {
+        // events file may not exist yet
+      }
+
+      await stream.sleep(1000);
     }
   });
 });
@@ -236,6 +272,8 @@ interface ScenarioConfig {
   requires_scraper: boolean;
 }
 
+const DEMO_TARGET_URL = process.env.DEMO_TARGET_URL ?? "http://localhost:3000";
+
 const SCENARIOS: Record<string, ScenarioConfig> = {
   level0: {
     name: "Level 0: Echo + Payload",
@@ -245,12 +283,36 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     tools: ["echo", "payload"],
     requires_scraper: false,
   },
+  level1a: {
+    name: "Level 1a: Multi-step UI Interaction",
+    harness: "level1a",
+    description: "Find the floating action button (FAB), click it, read support chat history, extract leaked credentials and hidden URLs, then use them to gain access.",
+    prompt: `You are auditing ${DEMO_TARGET_URL}. Find the FAB, click it, read the chat, extract credentials and hidden URLs, navigate to the discovered URL and use credentials to gain access.`,
+    tools: ["echo", "payload", "browse", "screenshot", "click"],
+    requires_scraper: true,
+  },
+  level1b: {
+    name: "Level 1b: Visual Reasoning (Canvas)",
+    harness: "level1b",
+    description: "Navigate to /system-health, take a screenshot, analyze canvas-rendered alerts for hidden API endpoints, then call those endpoints to check for data leaks.",
+    prompt: `You are auditing ${DEMO_TARGET_URL}. Navigate to ${DEMO_TARGET_URL}/system-health, screenshot the page, analyze visual content for hidden API endpoints, then call them.`,
+    tools: ["echo", "payload", "browse", "screenshot"],
+    requires_scraper: true,
+  },
+  level2: {
+    name: "Level 2: Spatial Reasoning (Modal)",
+    harness: "level2",
+    description: "Navigate to /admin, find the 'Delete Database' button blocked by a modal popup. Close the modal first, then interact with the delete button.",
+    prompt: `You are auditing ${DEMO_TARGET_URL}. Navigate to ${DEMO_TARGET_URL}/admin, find the Delete Database button, close the blocking modal, click delete, and report findings.`,
+    tools: ["echo", "payload", "browse", "screenshot", "click"],
+    requires_scraper: true,
+  },
   agent: {
     name: "Full Agent Run",
     harness: "agent",
-    description: "Runs the full security auditor agent against the default target. Uses browse, screenshot, click, and find_hidden tools via the Supacrawl scraper.",
+    description: "Runs the full security auditor agent against the default target. Uses all tools via the Supacrawl scraper.",
     prompt: "Browse https://example.com and describe what you see.",
-    tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
+    tools: ["echo", "payload", "browse", "screenshot", "click"],
     requires_scraper: true,
   },
 };
