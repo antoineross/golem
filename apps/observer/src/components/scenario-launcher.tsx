@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipTrigger,
@@ -175,76 +174,74 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
         </Tooltip>
       </div>
 
-      <ScrollArea className="max-h-[200px]">
-        <div className="px-2 pb-1">
-          <Accordion className="space-y-0.5">
-            {Object.entries(scenarios).map(([key, scenario]) => (
-              <AccordionItem key={key} value={key} className="border-0">
-                <div className="rounded-md border border-border overflow-hidden">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <AccordionTrigger className="px-2.5 py-1 hover:no-underline text-xs" />
-                      }
-                    >
-                      <span className="truncate">{scenario.name}</span>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="max-w-[220px] text-xs">
+      <div className="max-h-[220px] overflow-y-auto px-2 pb-1">
+        <Accordion className="space-y-0.5">
+          {Object.entries(scenarios).map(([key, scenario]) => (
+            <AccordionItem key={key} value={key} className="border-0">
+              <div className="rounded-md border border-border overflow-hidden">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <AccordionTrigger className="px-2.5 py-1 hover:no-underline text-xs" />
+                    }
+                  >
+                    <span className="truncate">{scenario.name}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[220px] text-xs">
+                    {scenario.description}
+                  </TooltipContent>
+                </Tooltip>
+                <AccordionContent className="px-2.5 pb-2">
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
                       {scenario.description}
-                    </TooltipContent>
-                  </Tooltip>
-                  <AccordionContent className="px-2.5 pb-2">
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        {scenario.description}
+                    </p>
+                    <div className="rounded bg-muted p-1.5">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
+                        Prompt
+                      </div>
+                      <p className="text-[11px] font-mono text-foreground">
+                        {scenario.prompt}
                       </p>
-                      <div className="rounded bg-muted p-1.5">
-                        <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
-                          Prompt
-                        </div>
-                        <p className="text-[11px] font-mono text-foreground">
-                          {scenario.prompt}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {scenario.tools?.map((t) => (
-                          <Badge key={t} variant="outline" className="text-[9px] px-1 py-0 h-3.5">
-                            {t}
-                          </Badge>
-                        ))}
-                      </div>
-                      {scenario.requires_scraper && (
-                        <p className="text-[10px] text-amber-400">Requires scraper service</p>
-                      )}
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              variant="default"
-                              size="xs"
-                              disabled={status === "running" || !runnerEnabled}
-                              onClick={() => runScenario(key)}
-                              className="w-full"
-                            />
-                          }
-                        >
-                          <PlayIcon className="h-3 w-3 mr-1" />
-                          Run
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {runnerEnabled
-                            ? `Start ${scenario.harness} harness`
-                            : "Runner disabled -- use './golem e2e' from the CLI"}
-                        </TooltipContent>
-                      </Tooltip>
                     </div>
-                  </AccordionContent>
-                </div>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
-      </ScrollArea>
+                    <div className="flex flex-wrap gap-1">
+                      {scenario.tools?.map((t) => (
+                        <Badge key={t} variant="outline" className="text-[9px] px-1 py-0 h-3.5">
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                    {scenario.requires_scraper && (
+                      <p className="text-[10px] text-amber-400">Requires scraper service</p>
+                    )}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="default"
+                            size="xs"
+                            disabled={status === "running" || !runnerEnabled}
+                            onClick={() => runScenario(key)}
+                            className="w-full"
+                          />
+                        }
+                      >
+                        <PlayIcon className="h-3 w-3 mr-1" />
+                        Run
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {runnerEnabled
+                          ? `Start ${scenario.harness} harness`
+                          : "Runner disabled -- use './golem e2e' from the CLI"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </AccordionContent>
+              </div>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
 
       <div className="flex gap-1.5 px-2 py-1.5">
         <Input
