@@ -1,0 +1,56 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  scraper:
+    build:
+      context: ./apps/scraper
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8082:8081"
+    environment:
+      - REDIS_ADDR=redis:6379
+      - HTTP_ADDR=:8081
+      - APP_ENV=development
+      - LIGHTPANDA_CDP_URL=ws://localhost:9222
+    env_file:
+      - ./apps/scraper/.env.example
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  golem:
+    build:
+      context: ./apps/golem
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      - SUPACRAWL_API_URL=http://scraper:8081
+      - REDIS_ADDR=redis:6379
+    env_file:
+      - .env.example
+    depends_on:
+      redis:
+        condition: service_healthy
+      scraper:
+        condition: service_started
+    volumes:
+      - ./apps/golem:/app
+      - golem-go-cache:/go/pkg
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  golem-go-cache:

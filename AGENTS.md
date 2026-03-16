@@ -16,13 +16,17 @@ Current development roadmap: `tmp/versions/roadmap.md`.
 User Input -> ADK Runner -> Gemini Reasoning -> Tool Call (Supacrawl) -> Visual Confirmation -> Final Report
 ```
 
-Go layout:
-- `cmd/golem/main.go` -- entry point and wiring
-- `internal/adk/` -- model factory, runner setup, agent config
-- `internal/browser/` -- Supacrawl client and browser_action tool
-- `internal/perception/` -- visual hashing, state mapping, hidden element detection
-- `internal/security/` -- attack trees, payload engineering, multi-session context
-- `internal/report/` -- regex-based parser for structured vulnerability reports
+Monorepo layout:
+- `apps/golem/` -- the agent (own go.mod)
+  - `cmd/golem/main.go` -- entry point and wiring
+  - `internal/adk/` -- model factory, runner setup, agent config
+  - `internal/browser/` -- Supacrawl client and browser_action tool
+  - `internal/perception/` -- state mapping, hidden element detection
+  - `internal/security/` -- attack trees, payload engineering
+  - `internal/report/` -- regex-based parser for vulnerability reports
+- `apps/scraper/` -- Supacrawler perception layer (own go.mod)
+  - Provides `/v1/scrape`, `/v1/screenshots` endpoints
+  - LightPanda browser automation, Redis task queue
 
 Key constraint (ADK-Go v0.3.0): `OutputSchema` and `Tools` are mutually exclusive. Because this agent uses tools, structured output must use the Regex Parser pattern.
 

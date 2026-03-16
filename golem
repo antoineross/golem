@@ -192,14 +192,14 @@ cmd_start() {
     rm -f "${PID_FILE}"
   fi
 
-  if [[ ! -f "${REPO_ROOT}/go.mod" ]]; then
-    log_err "go.mod not found; initialize the module first (go mod init)"
+  if [[ ! -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
+    log_err "apps/golem/go.mod not found; initialize the module first"
     exit 1
   fi
 
   local log_file="${LOG_DIR}/golem-$(date +%Y%m%d-%H%M%S).log"
   log_info "starting golem agent"
-  go run "${REPO_ROOT}/cmd/golem/main.go" > "${log_file}" 2>&1 &
+  (cd "${REPO_ROOT}/apps/golem" && go run ./cmd/golem/main.go) > "${log_file}" 2>&1 &
   local pid=$!
   echo "${pid}" > "${PID_FILE}"
   log_ok "golem started (pid ${pid}, log ${log_file})"
@@ -275,32 +275,32 @@ cmd_env_list() {
 
 cmd_build() {
   check_go
-  if [[ ! -f "${REPO_ROOT}/go.mod" ]]; then
-    log_err "go.mod not found; initialize the module first"
+  if [[ ! -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
+    log_err "apps/golem/go.mod not found; initialize the module first"
     exit 1
   fi
   log_info "building golem"
-  go build ./...
+  (cd "${REPO_ROOT}/apps/golem" && go build ./...)
   log_ok "build complete"
 }
 
 cmd_lint() {
-  if [[ -f "${REPO_ROOT}/go.mod" ]]; then
+  if [[ -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
     log_info "running go vet"
-    go vet ./...
+    (cd "${REPO_ROOT}/apps/golem" && go vet ./...)
     log_ok "go vet passed"
   else
-    log_warn "go.mod not present; skipping lint"
+    log_warn "apps/golem/go.mod not present; skipping lint"
   fi
 }
 
 cmd_test() {
-  if [[ -f "${REPO_ROOT}/go.mod" ]]; then
+  if [[ -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
     log_info "running go test"
-    go test ./...
+    (cd "${REPO_ROOT}/apps/golem" && go test ./...)
     log_ok "tests passed"
   else
-    log_warn "go.mod not present; skipping tests"
+    log_warn "apps/golem/go.mod not present; skipping tests"
   fi
 }
 

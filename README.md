@@ -61,13 +61,19 @@ cp .env.example .env.local
 ## Project structure
 
 ```text
-cmd/golem/main.go         -- entry point
-internal/adk/             -- model factory, runner, agent config
-internal/browser/         -- Supacrawl client, browser_action tool
-internal/perception/      -- visual hashing, state mapping
-internal/security/        -- attack trees, payload engineering
-internal/report/          -- regex parser for vulnerability reports
-tmp/                      -- local dev artifacts (gitignored)
+apps/
+  golem/                    -- the agent
+    cmd/golem/main.go       -- entry point
+    internal/adk/           -- model factory, runner, agent config
+    internal/browser/       -- Supacrawl client, browser_action tool
+    internal/perception/    -- state mapping, hidden element detection
+    internal/security/      -- attack trees, payload engineering
+    internal/report/        -- regex parser for vulnerability reports
+  scraper/                  -- Supacrawler perception layer
+    cmd/main.go             -- scraper entry point
+    internal/core/          -- scrape, crawl, screenshot, parse services
+docker-compose.yml          -- local dev: golem + scraper + redis
+tmp/                        -- local dev artifacts (gitignored)
 ```
 
 ## Development

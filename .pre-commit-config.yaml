@@ -20,19 +20,19 @@ repos:
       - id: gofmt-check
         name: gofmt check
         language: system
-        entry: bash -c 'if [ -f go.mod ]; then files=$(find . -type f -name "*.go" -not -path "./.git/*"); if [ -z "$files" ]; then echo "No Go files found; skipping gofmt check"; exit 0; fi; unformatted=$(echo "$files" | xargs gofmt -l); if [ -n "$unformatted" ]; then echo "The following files need gofmt"; echo "$unformatted"; echo "Run gofmt -w <files>"; exit 1; fi; else echo "go.mod not present; skipping gofmt check"; fi'
+        entry: bash -c 'files=$(find apps -type f -name "*.go" -not -path "*/.git/*" 2>/dev/null); if [ -z "$files" ]; then echo "No Go files found; skipping gofmt check"; exit 0; fi; unformatted=$(echo "$files" | xargs gofmt -l); if [ -n "$unformatted" ]; then echo "The following files need gofmt"; echo "$unformatted"; echo "Run gofmt -w <files>"; exit 1; fi'
         pass_filenames: false
 
       - id: govet-if-module
         name: go vet when go.mod exists
         language: system
-        entry: bash -c 'if [ -f go.mod ]; then echo "Running go vet ./..."; go vet ./...; else echo "go.mod not present; skipping go vet"; fi'
+        entry: bash -c 'for mod in apps/*/go.mod; do [ -f "$mod" ] || continue; dir=$(dirname "$mod"); echo "Running go vet in $dir"; (cd "$dir" && go vet ./...) || exit 1; done'
         pass_filenames: false
 
       - id: gotest-if-module
         name: go test when go.mod exists
         language: system
-        entry: bash -c 'if [ -f go.mod ]; then echo "Running go test ./..."; go test ./...; else echo "go.mod not present; skipping go test"; fi'
+        entry: bash -c 'for mod in apps/*/go.mod; do [ -f "$mod" ] || continue; dir=$(dirname "$mod"); echo "Running go test in $dir"; (cd "$dir" && go test ./...) || exit 1; done'
         pass_filenames: false
 
       - id: shellcheck

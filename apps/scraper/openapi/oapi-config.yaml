@@ -1,0 +1,5 @@
+package: engineapi
+generate:
+  models: true
+  client: true
+output: internal/platform/engineapi/engine.gen.go

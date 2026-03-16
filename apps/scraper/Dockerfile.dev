@@ -1,0 +1,68 @@
+# Stage 1: Modules caching
+FROM golang:1.24.4 AS modules
+WORKDIR /app
+# Copy only module files for caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Stage 2: Build
+FROM golang:1.24.4 AS builder
+COPY --from=modules /go/pkg /go/pkg
+WORKDIR /workdir
+# Copy the scraper source
+COPY . ./
+# Install air for hot reload
+RUN go install github.com/air-verse/air@v1.61.5
+
+# Stage 3: Development environment
+FROM debian:bookworm-slim
+
+# Prevent timezone prompt
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Copy necessary files from builder
+COPY --from=builder /go/bin/air /usr/local/bin/air
+COPY --from=builder /workdir /app
+COPY --from=builder /usr/local/go /usr/local/go
+
+WORKDIR /app
+
+# Install minimal dependencies and download LightPanda
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    # Cleanup
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    # Download LightPanda browser for the correct architecture
+    && ARCH=$(dpkg --print-architecture) \
+    && if [ "$ARCH" = "arm64" ]; then \
+         curl -L -o /usr/local/bin/lightpanda \
+           https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-aarch64-linux; \
+       else \
+         curl -L -o /usr/local/bin/lightpanda \
+           https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux; \
+       fi \
+    && chmod +x /usr/local/bin/lightpanda
+
+# Set up Go environment
+ENV GOPATH=/go
+ENV PATH="/usr/local/go/bin:${GOPATH}/bin:${PATH}"
+
+# LightPanda CDP URL (localhost since bundled in same container)
+ENV LIGHTPANDA_CDP_URL=ws://localhost:9222
+
+# Optional envs for storage (set via docker run -e)
+# ENV SUPABASE_URL=
+# ENV SUPABASE_SERVICE_KEY=
+# ENV SUPABASE_STORAGE_BUCKET=screenshots
+
+EXPOSE 8081
+
+# Copy and make start script executable
+COPY scripts/start-dev.sh /start-dev.sh
+RUN chmod +x /start-dev.sh
+
+# Start LightPanda and scraper
+CMD ["/start-dev.sh"]
