@@ -162,7 +162,7 @@ function EventContent({ event }: { event: TimelineEvent }) {
           <img
             src={event.screenshot_url}
             alt={`Screenshot from ${event.tool_name}`}
-            className="max-w-full max-h-72 object-contain bg-black/20"
+            className="max-w-full max-h-72 object-contain bg-muted/50"
           />
         </div>
       )}
