@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"net/http/cookiejar"
 
 	"scraper/internal/logger"
 	"scraper/internal/platform/engineapi"
@@ -18,11 +17,16 @@ func newTestLogger() *logger.Logger {
 	return logger.New("test")
 }
 
-func newTestService() *Service {
-	jar, _ := cookiejar.New(nil)
+func newTestService(t *testing.T) *Service {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar.New: %v", err)
+	}
 	return &Service{
 		log:       newTestLogger(),
 		cookieJar: jar,
+		skipDelay: true,
 	}
 }
 
@@ -50,7 +54,7 @@ func TestScrapeWithClientDecompressesGzip(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	svc := newTestService()
+	svc := newTestService(t)
 	params := engineapi.GetV1ScrapeParams{Url: srv.URL}
 	result, err := svc.scrapeWithClient(params, StrategyModernBrowser, srv.Client())
 	if err != nil {
@@ -84,7 +88,7 @@ func TestScrapeWithClientPlainResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	svc := newTestService()
+	svc := newTestService(t)
 	params := engineapi.GetV1ScrapeParams{Url: srv.URL}
 	result, err := svc.scrapeWithClient(params, StrategyModernBrowser, srv.Client())
 	if err != nil {

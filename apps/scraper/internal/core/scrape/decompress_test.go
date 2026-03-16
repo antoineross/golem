@@ -2,13 +2,14 @@ package scrape
 
 import (
 	"bytes"
-	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"io"
 	"net/http"
 	"testing"
 
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 func makeResponse(encoding string, body []byte) *http.Response {
@@ -31,13 +32,10 @@ func compressGzip(t *testing.T, data string) []byte {
 	return buf.Bytes()
 }
 
-func compressDeflate(t *testing.T, data string) []byte {
+func compressZlib(t *testing.T, data string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	w, err := flate.NewWriter(&buf, flate.DefaultCompression)
-	if err != nil {
-		t.Fatal(err)
-	}
+	w := zlib.NewWriter(&buf)
 	if _, err := w.Write([]byte(data)); err != nil {
 		t.Fatal(err)
 	}
@@ -51,6 +49,22 @@ func compressBrotli(t *testing.T, data string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	w := brotli.NewWriter(&buf)
+	if _, err := w.Write([]byte(data)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func compressZstd(t *testing.T, data string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w, err := zstd.NewWriter(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := w.Write([]byte(data)); err != nil {
 		t.Fatal(err)
 	}
@@ -76,15 +90,21 @@ func TestDecompressBody(t *testing.T) {
 			want:     payload,
 		},
 		{
-			name:     "deflate encoding",
+			name:     "deflate encoding (zlib-wrapped)",
 			encoding: "deflate",
-			body:     compressDeflate(t, payload),
+			body:     compressZlib(t, payload),
 			want:     payload,
 		},
 		{
 			name:     "brotli encoding",
 			encoding: "br",
 			body:     compressBrotli(t, payload),
+			want:     payload,
+		},
+		{
+			name:     "zstd encoding",
+			encoding: "zstd",
+			body:     compressZstd(t, payload),
 			want:     payload,
 		},
 		{
@@ -106,12 +126,6 @@ func TestDecompressBody(t *testing.T) {
 			want:     payload,
 		},
 		{
-			name:     "zstd falls through to raw",
-			encoding: "zstd",
-			body:     []byte(payload),
-			want:     payload,
-		},
-		{
 			name:     "gzip with whitespace in header",
 			encoding: " gzip ",
 			body:     compressGzip(t, payload),
@@ -120,6 +134,12 @@ func TestDecompressBody(t *testing.T) {
 		{
 			name:     "GZIP uppercase",
 			encoding: "GZIP",
+			body:     compressGzip(t, payload),
+			want:     payload,
+		},
+		{
+			name:     "comma-separated uses last encoding",
+			encoding: "identity, gzip",
 			body:     compressGzip(t, payload),
 			want:     payload,
 		},
