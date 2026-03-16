@@ -44,6 +44,9 @@ func (s *agentState) set(status, traceFile, errMsg string) {
 	if traceFile != "" {
 		s.traceFile = traceFile
 	}
+	if len(errMsg) > maxErrorLength {
+		errMsg = errMsg[:maxErrorLength] + "... [truncated]"
+	}
 	s.err = errMsg
 }
 
@@ -257,6 +260,8 @@ func (c *cappedBuffer) String() string {
 	return c.buf.String()
 }
 
+const maxErrorLength = 512
+
 func extractAgentError(output string, exitErr error) string {
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
@@ -269,15 +274,11 @@ func extractAgentError(output string, exitErr error) string {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal([]byte(line), &entry) == nil && entry.Level == "ERROR" && entry.Error != "" {
+			if len(entry.Error) > maxErrorLength {
+				return entry.Error[:maxErrorLength] + "... [truncated]"
+			}
 			return entry.Error
 		}
-	}
-	tail := output
-	if len(tail) > 500 {
-		tail = tail[len(tail)-500:]
-	}
-	if tail != "" {
-		return fmt.Sprintf("%s: %s", exitErr, tail)
 	}
 	return exitErr.Error()
 }
