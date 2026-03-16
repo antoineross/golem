@@ -46,6 +46,7 @@ type runRequest struct {
 	Prompt    string `json:"prompt"`
 	Harness   string `json:"harness"`
 	TraceFile string `json:"trace_file"`
+	APIKey    string `json:"api_key,omitempty"`
 }
 
 func main() {
@@ -105,7 +106,8 @@ func main() {
 		state.set("running", traceFile, "")
 
 		go func() {
-			slog.Info("starting agent run", "prompt", req.Prompt, "trace_file", traceFile, "harness", harness)
+			hasCustomKey := req.APIKey != ""
+			slog.Info("starting agent run", "prompt", req.Prompt, "trace_file", traceFile, "harness", harness, "custom_key", hasCustomKey)
 
 			cmd := exec.Command("/app/tmp/golem", req.Prompt)
 			cmd.Dir = "/app"
@@ -113,6 +115,9 @@ func main() {
 				"GOLEM_TRACE_FILE="+traceFile,
 				"GOLEM_TRACE_CAPTURE_CONTENT=true",
 			)
+			if req.APIKey != "" {
+				cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
+			}
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 
@@ -150,7 +155,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Api-Key")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

@@ -36,9 +36,10 @@ interface Scenario {
 interface ScenarioLauncherProps {
   onRunStarted: (traceFile: string) => void;
   onRunComplete?: () => void;
+  apiKey?: string | null;
 }
 
-export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLauncherProps) {
+export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey }: ScenarioLauncherProps) {
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Record<string, Scenario>>({});
@@ -86,10 +87,12 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
 
   const runScenario = async (scenarioKey: string) => {
     try {
+      const payload: Record<string, string> = { scenario: scenarioKey };
+      if (apiKey) payload.api_key = apiKey;
       const res = await fetch(`${API_BASE}/api/agent/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario: scenarioKey }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {
@@ -109,10 +112,12 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
   const runCustom = async () => {
     if (!customPrompt.trim()) return;
     try {
+      const payload: Record<string, string> = { scenario: "agent", prompt: customPrompt };
+      if (apiKey) payload.api_key = apiKey;
       const res = await fetch(`${API_BASE}/api/agent/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario: "agent", prompt: customPrompt }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {

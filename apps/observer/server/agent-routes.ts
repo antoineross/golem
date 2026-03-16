@@ -65,12 +65,15 @@ async function startRunViaGolemApi(
   prompt: string,
   harness: string,
   traceFile: string,
+  apiKey?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    const payload: Record<string, string> = { prompt, harness, trace_file: traceFile };
+    if (apiKey) payload.api_key = apiKey;
     const resp = await fetch(`${golemApiUrl}/api/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, harness, trace_file: traceFile }),
+      body: JSON.stringify(payload),
     });
     if (!resp.ok) {
       const body = await resp.text();
@@ -87,14 +90,18 @@ function startRunViaSpawn(
   harness: string,
   prompt: string,
   traceFile: string,
+  apiKey?: string,
 ): void {
   const golemScript = path.join(config.repoRoot, "golem");
   const args = ["e2e", harness];
   if (prompt) args.push(prompt);
 
+  const env: Record<string, string> = { ...process.env as Record<string, string>, GOLEM_TRACE_FILE: traceFile };
+  if (apiKey) env.GOOGLE_API_KEY = apiKey;
+
   const child = spawn(golemScript, args, {
     cwd: config.repoRoot,
-    env: { ...process.env, GOLEM_TRACE_FILE: traceFile },
+    env,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -196,8 +203,10 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
     }
 
     const body = await c.req.json().catch(() => ({}));
-    const scenario = (body as Record<string, string>).scenario ?? "level0";
-    const customPrompt = (body as Record<string, string>).prompt;
+    const typed = body as Record<string, string>;
+    const scenario = typed.scenario ?? "level0";
+    const customPrompt = typed.prompt;
+    const userApiKey = typed.api_key;
 
     const scenarioConfig = SCENARIOS[scenario];
     if (!scenarioConfig && !customPrompt) {
@@ -215,14 +224,14 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
     setAgentState({ status: "running", error: null, traceFile });
 
     if (useGolemApi) {
-      const result = await startRunViaGolemApi(config.golemApiUrl!, prompt, harness, traceFile);
+      const result = await startRunViaGolemApi(config.golemApiUrl!, prompt, harness, traceFile, userApiKey);
       if (!result.ok) {
         setAgentState({ status: "error", error: result.error ?? "failed to start agent" });
         return c.json({ error: result.error }, 502);
       }
       pollGolemStatus(config.golemApiUrl!, traceFile);
     } else {
-      startRunViaSpawn(config, harness, prompt, traceFile);
+      startRunViaSpawn(config, harness, prompt, traceFile, userApiKey);
     }
 
     return c.json({
