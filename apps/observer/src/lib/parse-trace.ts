@@ -7,9 +7,10 @@ import type {
 } from "@/types/trace";
 
 function getAttr(
-  attrs: OtelAttribute[],
+  attrs: OtelAttribute[] | undefined | null,
   key: string
 ): string | number | string[] | undefined {
+  if (!attrs) return undefined;
   const attr = attrs.find((a) => a.Key === key);
   return attr?.Value.Value;
 }
@@ -43,6 +44,10 @@ function parseOtelSpans(raw: string): OtelSpan[] {
     }
   }
   return spans;
+}
+
+function isValidSpan(span: OtelSpan): boolean {
+  return Boolean(span.SpanContext?.SpanID && span.StartTime && span.EndTime);
 }
 
 function otelSpanToEvent(span: OtelSpan): TimelineEvent {
@@ -106,7 +111,7 @@ function otelSpanToEvent(span: OtelSpan): TimelineEvent {
 }
 
 export function parseOtelTrace(raw: string): TraceSummary {
-  const spans = parseOtelSpans(raw);
+  const spans = parseOtelSpans(raw).filter(isValidSpan);
 
   const events = spans
     .map(otelSpanToEvent)

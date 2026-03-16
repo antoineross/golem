@@ -7,8 +7,10 @@ import { Timeline } from "@/components/timeline";
 import { RawJsonView } from "@/components/raw-json-view";
 import { ScreenshotGallery } from "@/components/screenshot-gallery";
 import { TracePicker } from "@/components/trace-picker";
+import { ScenarioLauncher } from "@/components/scenario-launcher";
+import { ReplayControls } from "@/components/replay-controls";
 import { useTraceList, useTrace, useTraceSSE } from "@/hooks/use-traces";
-import type { TraceSummary } from "@/types/trace";
+import type { TraceSummary, TimelineEvent } from "@/types/trace";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Eye, RefreshCw } from "lucide-react";
 
@@ -22,6 +24,8 @@ export default function App() {
   const [liveTrace, setLiveTrace] = useState<TraceSummary | null>(null);
   const [liveRaw, setLiveRaw] = useState<string | null>(null);
   const [liveEnabled, setLiveEnabled] = useState(false);
+  const [replayMode, setReplayMode] = useState(false);
+  const [replayEvents, setReplayEvents] = useState<TimelineEvent[]>([]);
 
   const handleSSE = useCallback((t: TraceSummary, r: string) => {
     setLiveTrace(t);
@@ -36,7 +40,19 @@ export default function App() {
   const handleFileSelect = (path: string) => {
     setSelectedFile(path);
     setLiveEnabled(false);
+    setReplayMode(false);
   };
+
+  const handleRunStarted = () => {
+    setLiveEnabled(true);
+    setReplayMode(false);
+  };
+
+  const handleReplayEvents = useCallback((events: TimelineEvent[]) => {
+    setReplayEvents(events);
+  }, []);
+
+  const displayEvents = replayMode ? replayEvents : (activeTrace?.events ?? []);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -53,7 +69,17 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setLiveEnabled(!liveEnabled)}
+              onClick={() => { setReplayMode(!replayMode); setLiveEnabled(false); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors ${
+                replayMode
+                  ? "bg-purple-900/50 text-purple-400 border border-purple-700"
+                  : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
+              }`}
+            >
+              {replayMode ? "Replay On" : "Replay"}
+            </button>
+            <button
+              onClick={() => { setLiveEnabled(!liveEnabled); setReplayMode(false); }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors ${
                 liveEnabled
                   ? "bg-green-900/50 text-green-400 border border-green-700"
@@ -75,6 +101,8 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-4 space-y-4">
+        <ScenarioLauncher onRunStarted={handleRunStarted} />
+
         {!filesLoading && files.length > 0 && (
           <>
             <TracePicker
@@ -102,6 +130,14 @@ export default function App() {
         {activeTrace && (
           <>
             <SummaryHeader trace={activeTrace} />
+
+            {replayMode && (
+              <ReplayControls
+                events={activeTrace.events}
+                onVisibleEvents={handleReplayEvents}
+              />
+            )}
+
             <Tabs defaultValue="timeline" className="w-full">
               <TabsList className="bg-zinc-900 border border-zinc-800">
                 <TabsTrigger value="timeline">Timeline</TabsTrigger>
@@ -109,7 +145,7 @@ export default function App() {
                 <TabsTrigger value="screenshots">Screenshots</TabsTrigger>
               </TabsList>
               <TabsContent value="timeline" className="mt-4">
-                <Timeline events={activeTrace.events} />
+                <Timeline events={displayEvents} />
               </TabsContent>
               <TabsContent value="raw" className="mt-4">
                 <RawJsonView raw={activeRaw} />
@@ -124,9 +160,9 @@ export default function App() {
         {!loading && !error && !activeTrace && (
           <div className="text-center py-16 text-zinc-500">
             <Eye className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p className="text-lg">Select a trace file to begin</p>
+            <p className="text-lg">Select a trace file or run a scenario</p>
             <p className="text-sm mt-1">
-              Or enable live mode to watch for new agent traces
+              Use the launcher above to start an agent run, or enable live mode
             </p>
           </div>
         )}

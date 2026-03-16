@@ -32,6 +32,12 @@ Monorepo layout:
   - E-commerce demo with 8 planted security flaws (IDOR, privilege escalation, hidden elements, client-side logic bypass)
   - Used as proof target for Gemini Live Agent Challenge submission
   - Contains deliberate vulnerabilities -- do not apply security fixes
+- `apps/observer/` -- Vite + React + TypeScript observability dashboard
+  - Visualizes OTel span traces and thinking-test traces from the agent
+  - Hono backend with SSE for live trace streaming
+  - Scenario launcher for triggering agent runs from the UI
+  - Replay mode for pre-recorded trace playback at configurable speed
+  - Run: `cd apps/observer && bun install && bun run dev:all`
 
 Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusive. Because this agent uses tools, structured output must use the Regex Parser pattern.
 
@@ -125,6 +131,15 @@ Always use `./golem` commands. Do not bypass with raw commands for normal workfl
 | `./golem env list` | `cat .env` |
 | `./golem status` | manual process inspection |
 | `./golem stop` | manual kill |
+| `./golem e2e level0` | manual go run with env vars |
+
+Observer (trace visualization):
+
+```bash
+cd apps/observer && bun install && bun run dev:all
+```
+
+This starts the Vite dev server (:5173) and the Hono API server (:3001).
 
 Reason: the wrapper enforces env-file selection, logging, and consistent local behavior.
 
@@ -286,9 +301,31 @@ Test tool functions end-to-end with mock HTTP servers simulating the scraper API
 
 ADK `tool.Context` cannot be constructed outside the ADK internals, so tool invocation through `tool.Run()` is not testable without the full ADK runner. Instead, test at the client level with realistic arg patterns matching what tools would send.
 
-### level 3: E2E tests (deferred to v0.6)
+### level 3: E2E tests
 
-Test the full agent loop: real Gemini API + real/mock scraper + runner event loop. Requires `GOOGLE_API_KEY` and a running scraper service. These are manual smoke tests documented in `tmp/tests/`.
+Test the full agent loop: real Gemini API + real/mock scraper + runner event loop. Requires `GOOGLE_API_KEY`. Run via `./golem e2e <harness>`.
+
+#### E2E harnesses
+
+| Harness | Command | Requires | What it tests |
+|---------|---------|----------|--------------|
+| `thinking` | `./golem e2e thinking` | `GOOGLE_API_KEY` | Thinking mode at LOW/MEDIUM levels, trace output |
+| `agent` | `./golem e2e agent [prompt]` | `GOOGLE_API_KEY` | Full agent loop with tools, custom prompt |
+| `level0` | `./golem e2e level0` | `GOOGLE_API_KEY` | Echo + payload tools only (no scraper needed) |
+
+Output goes to `tmp/tests/<harness>/`. Each run produces:
+- `*_e2e.log` -- agent stdout/stderr
+- `*_otel_spans.json` -- OTel trace file for observer visualization
+
+#### observer tests
+
+The observer app (`apps/observer/`) has its own test suite:
+
+```bash
+cd apps/observer && bun run test     # 59 unit tests (vitest)
+cd apps/observer && bun run lint     # eslint
+cd apps/observer && bun run build    # tsc + vite build
+```
 
 ### PR test documentation
 

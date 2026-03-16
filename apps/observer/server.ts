@@ -4,11 +4,19 @@ import { serveStatic } from "hono/bun";
 import { streamSSE } from "hono/streaming";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 
-const TRACE_FILE = process.env.TRACE_FILE ?? "../../tmp/tests/agent/agent_otel_spans.json";
-const TRACE_DIR = process.env.TRACE_DIR ?? "../../tmp/tests";
-const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "../../tmp/screenshots";
+const SCRIPT_DIR = path.dirname(new URL(import.meta.url).pathname);
+const TRACE_FILE = path.resolve(SCRIPT_DIR, process.env.TRACE_FILE ?? "../../tmp/tests/agent/agent_otel_spans.json");
+const TRACE_DIR = path.resolve(SCRIPT_DIR, process.env.TRACE_DIR ?? "../../tmp/tests");
+const SCREENSHOT_DIR = path.resolve(SCRIPT_DIR, process.env.SCREENSHOT_DIR ?? "../../tmp/screenshots");
+const REPO_ROOT = path.resolve(SCRIPT_DIR, process.env.REPO_ROOT ?? "../../");
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
+
+type AgentStatus = "idle" | "running" | "complete" | "error";
+let agentStatus: AgentStatus = "idle";
+let agentError: string | null = null;
+let agentTraceFile: string | null = null;
 
 const app = new Hono();
 app.use("/*", cors());
@@ -55,6 +63,12 @@ app.get("/api/traces", (c) => {
   return c.json({ files, default_trace: TRACE_FILE });
 });
 
+app.get("/api/traces/default", (c) => {
+  const content = readTraceFile(TRACE_FILE);
+  if (!content) return c.json({ error: "default trace file not found" }, 404);
+  return c.json({ content, path: TRACE_FILE });
+});
+
 app.get("/api/traces/:file{.+}", (c) => {
   const file = c.req.param("file");
   const filePath = path.resolve(file);
@@ -66,12 +80,6 @@ app.get("/api/traces/:file{.+}", (c) => {
   const content = readTraceFile(filePath);
   if (!content) return c.json({ error: "file not found" }, 404);
   return c.json({ content, path: filePath });
-});
-
-app.get("/api/traces/default", (c) => {
-  const content = readTraceFile(TRACE_FILE);
-  if (!content) return c.json({ error: "default trace file not found" }, 404);
-  return c.json({ content, path: TRACE_FILE });
 });
 
 app.get("/api/traces/stream", (c) => {
@@ -134,6 +142,91 @@ app.get("/api/screenshots/:name", (c) => {
     "Content-Type": mimeMap[ext] ?? "application/octet-stream",
   });
 });
+
+// --- Agent Runner ---
+
+const SCENARIOS: Record<string, { name: string; harness: string; prompt?: string }> = {
+  level0: {
+    name: "Level 0: Echo + Payload",
+    harness: "level0",
+  },
+  agent: {
+    name: "Full Agent (default prompt)",
+    harness: "agent",
+  },
+};
+
+app.get("/api/agent/status", (c) => {
+  return c.json({
+    status: agentStatus,
+    error: agentError,
+    trace_file: agentTraceFile,
+  });
+});
+
+app.get("/api/agent/scenarios", (c) => {
+  return c.json({ scenarios: SCENARIOS });
+});
+
+app.post("/api/agent/run", async (c) => {
+  if (agentStatus === "running") {
+    return c.json({ error: "agent is already running" }, 409);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const scenario = (body as Record<string, string>).scenario ?? "level0";
+  const customPrompt = (body as Record<string, string>).prompt;
+
+  const config = SCENARIOS[scenario];
+  if (!config && !customPrompt) {
+    return c.json({ error: `unknown scenario: ${scenario}` }, 400);
+  }
+
+  agentStatus = "running";
+  agentError = null;
+
+  const golemScript = path.join(REPO_ROOT, "golem");
+  const harness = config?.harness ?? "agent";
+  const args = ["e2e", harness];
+  if (customPrompt) args.push(customPrompt);
+
+  const traceDir = path.join(REPO_ROOT, "tmp", "tests", harness);
+  const traceFile = harness === "level0"
+    ? path.join(traceDir, "level0_otel_spans.json")
+    : path.join(traceDir, "agent_otel_spans.json");
+  agentTraceFile = traceFile;
+
+  const child = spawn(golemScript, args, {
+    cwd: REPO_ROOT,
+    env: { ...process.env, GOLEM_TRACE_FILE: traceFile },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
+  child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+
+  child.on("close", (code: number | null) => {
+    if (code === 0) {
+      agentStatus = "complete";
+      agentError = null;
+    } else {
+      agentStatus = "error";
+      agentError = `exit code ${code}: ${stderr.slice(-500)}`;
+    }
+    console.log(`agent run finished: status=${agentStatus}, code=${code}`);
+    if (stdout) console.log(`stdout: ${stdout.slice(-200)}`);
+  });
+
+  return c.json({
+    status: "running",
+    scenario,
+    trace_file: traceFile,
+  });
+});
+
+// --- Static ---
 
 app.use("/*", serveStatic({ root: "./dist" }));
 app.get("/*", serveStatic({ path: "./dist/index.html" }));
