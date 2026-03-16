@@ -2,7 +2,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -17,7 +17,7 @@ services:
       context: ./apps/scraper
       dockerfile: Dockerfile.dev
     ports:
-      - "8082:8081"
+      - "${SCRAPER_PORT:-8083}:8081"
     environment:
       - REDIS_ADDR=redis:6379
       - HTTP_ADDR=:8081
@@ -35,7 +35,7 @@ services:
       context: ./apps/golem
       dockerfile: Dockerfile.dev
     ports:
-      - "8080:8080"
+      - "${GOLEM_PORT:-8081}:8080"
     environment:
       - SUPACRAWL_API_URL=http://scraper:8081
       - REDIS_ADDR=redis:6379

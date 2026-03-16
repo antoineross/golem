@@ -110,7 +110,7 @@ Tool registration is graceful: if `SUPACRAWL_API_URL` is not set or the scraper 
 
 Required variables:
 - `GOOGLE_API_KEY` (or `GEMINI_API_KEY` as fallback)
-- `SUPACRAWL_API_URL` (local: `http://localhost:8082`, docker: `http://scraper:8081`)
+- `SUPACRAWL_API_URL` (local: `http://localhost:8083`, docker: `http://scraper:8081`)
 
 Optional variables:
 - `DEFAULT_LLM_MODEL` (default: gemini-3-flash-preview)
@@ -123,25 +123,52 @@ Optional variables:
 
 ## local development
 
-Always use `./golem` commands. Do not bypass with raw commands for normal workflows.
+The `./golem` CLI is a docker compose orchestrator. It manages env file loading, service lifecycle, and health checks. All services run in Docker containers.
+
+```bash
+cp .env.example .env.local    # fill in API keys
+./golem env list               # verify config
+./golem start                  # start all services (detached)
+./golem status                 # check service health
+./golem logs                   # tail all logs
+./golem logs golem             # tail golem agent logs only
+./golem stop                   # stop all services
+```
+
+Never bypass the wrapper with raw docker compose commands. The wrapper handles env file selection (`--env-file`), project naming, and consistent behavior.
 
 | Do this | Not this |
 |---------|----------|
-| `./golem start` | `go run cmd/golem/main.go` |
+| `./golem start` | `docker compose up -d` |
+| `./golem build` | `docker compose build` |
+| `./golem stop` | `docker compose down` |
+| `./golem logs golem` | `docker logs golem-golem-1` |
+| `./golem start --observer` | `docker compose up -d observer` |
 | `./golem env list` | `cat .env` |
-| `./golem status` | manual process inspection |
-| `./golem stop` | manual kill |
 | `./golem e2e level0` | manual go run with env vars |
 
-Observer (trace visualization):
+### services
 
-```bash
-cd apps/observer && bun install && bun run dev:all
-```
+| Service | Host Port | Description |
+|---------|-----------|-------------|
+| redis | 6380 | Task queue and caching |
+| scraper | 8083 | Supacrawler perception layer (LightPanda browser) |
+| golem | 8081 | Agent (ADK-Go, hot-reload via Air) |
+| observer | 3000 | Trace visualization UI (Vite + Hono) |
 
-This starts the Vite dev server (:5173) and the Hono API server (:3001).
+Ports are configurable via env vars (`REDIS_PORT`, `SCRAPER_PORT`, `GOLEM_PORT`). Defaults are chosen to avoid collisions with other local services.
 
-Reason: the wrapper enforces env-file selection, logging, and consistent local behavior.
+### start options
+
+- `./golem start` -- start all services
+- `./golem start -t` -- start and tail logs
+- `./golem start --no-build` -- skip image rebuild
+- `./golem start --scraper` -- start redis + scraper only
+- `./golem start --observer` -- start observer only
+
+### reset
+
+`./golem reset --confirm` stops services, removes Docker volumes, and clears `tmp/` artifacts. Use for a clean slate.
 
 ## coding standards
 
