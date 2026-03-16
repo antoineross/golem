@@ -6,9 +6,58 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: Test deploy workflow
+  detect-changes:
+    name: Detect changes
     runs-on: ubuntu-latest
+    outputs:
+      git_sha_short: ${{ steps.vars.outputs.sha }}
+      golem_changed: ${{ steps.filter.outputs.golem }}
+      observer_changed: ${{ steps.filter.outputs.observer }}
+      scraper_changed: ${{ steps.filter.outputs.scraper }}
+      demo_target_changed: ${{ steps.filter.outputs.demo_target }}
+      any_changed: ${{ steps.filter.outputs.golem == 'true' || steps.filter.outputs.observer == 'true' || steps.filter.outputs.scraper == 'true' || steps.filter.outputs.demo_target == 'true' || steps.filter.outputs.config == 'true' }}
+
     steps:
       - uses: actions/checkout@v4
-      - run: echo "Deploy workflow works"
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            golem:
+              - 'apps/golem/**'
+            observer:
+              - 'apps/observer/**'
+            scraper:
+              - 'apps/scraper/**'
+            demo_target:
+              - 'apps/demo-target/**'
+            config:
+              - 'docker-compose.yml'
+              - 'docker-compose.prod.yml'
+              - '.github/workflows/deploy.yml'
+
+      - name: Set vars
+        id: vars
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+  build-golem:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.golem_changed == 'true'
+    uses: ./.github/workflows/build-service.yml
+    with:
+      service_name: golem
+      service_path: ./apps/golem
+      image_name: golem-agent
+      image_tag: ${{ needs.detect-changes.outputs.git_sha_short }}
+    secrets: inherit
+
+  test-deploy:
+    name: Test deploy step
+    needs: [detect-changes, build-golem]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Deploy step reached, any_changed=${{ needs.detect-changes.outputs.any_changed }}"
