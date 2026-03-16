@@ -41,18 +41,14 @@ func LoadLLMConfig() LLMConfig {
 	}
 }
 
-// RetryConfig returns the retry configuration derived from env-based settings.
+// RetryConfigFromEnv returns the retry configuration derived from env-based settings.
+// Values are assigned directly from LLMConfig (which already has defaults from LoadLLMConfig),
+// so zero values are respected (e.g., setting retries to 0 disables retries).
 func (c LLMConfig) RetryConfigFromEnv() RetryConfig {
 	cfg := DefaultRetryConfig()
-	if c.RetryMaxAttempts > 0 {
-		cfg.MaxRetries = c.RetryMaxAttempts
-	}
-	if c.RetryBaseDelayMs > 0 {
-		cfg.BaseDelay = time.Duration(c.RetryBaseDelayMs) * time.Millisecond
-	}
-	if c.RetryMaxDelayMs > 0 {
-		cfg.MaxDelay = time.Duration(c.RetryMaxDelayMs) * time.Millisecond
-	}
+	cfg.MaxRetries = c.RetryMaxAttempts
+	cfg.BaseDelay = time.Duration(c.RetryBaseDelayMs) * time.Millisecond
+	cfg.MaxDelay = time.Duration(c.RetryMaxDelayMs) * time.Millisecond
 	return cfg
 }
 

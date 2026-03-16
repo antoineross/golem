@@ -20,7 +20,7 @@ type RetryConfig struct {
 }
 
 // DefaultRetryConfig returns the Google-recommended defaults for handling
-// Gemini API 429 errors: 5 retries with exponential backoff from 2s to 60s.
+// Gemini API 429 errors: 5 retries with exponential backoff from 2s to 30s.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxRetries: 5,
@@ -231,10 +231,12 @@ func backoffDelay(attempt int, base, max time.Duration) time.Duration {
 }
 
 func waitWithContext(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return false
-	case <-time.After(d):
+	case <-timer.C:
 		return true
 	}
 }

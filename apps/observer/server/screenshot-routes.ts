@@ -53,7 +53,8 @@ export function registerScreenshotRoutes(app: Hono, config: ServerConfig): void 
     try {
       const upstream = await fetch(`${SCRAPER_URL}/files/screenshots/${encodeURIComponent(name)}`);
       if (!upstream.ok) {
-        return c.json({ error: "screenshot not found" }, upstream.status as 404);
+        const status = upstream.status === 404 ? 404 : 502;
+        return c.json({ error: status === 404 ? "screenshot not found" : "upstream error" }, status);
       }
       const contentType = upstream.headers.get("content-type") ?? "image/png";
       const buf = await upstream.arrayBuffer();

@@ -101,6 +101,11 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError 
         pollCleanupRef.current?.();
         pollCleanupRef.current = null;
         onRunComplete?.();
+      } else {
+        const body = await res.json().catch(() => ({ error: "stop failed" }));
+        handleRunError(body.error ?? `stop failed (${res.status})`);
+        pollCleanupRef.current?.();
+        pollCleanupRef.current = null;
       }
     } catch (err) {
       handleRunError(err instanceof Error ? err.message : "failed to stop agent");

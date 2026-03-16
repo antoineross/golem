@@ -56,10 +56,7 @@ func (s *agentState) stop() bool {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	if s.cmd != nil && s.cmd.Process != nil {
-		s.cmd.Process.Kill()
-	}
-	s.status = "stopped"
+	s.status = "error"
 	s.err = "agent stopped by user"
 	s.cmd = nil
 	s.cancel = nil
@@ -130,7 +127,11 @@ func main() {
 		}
 
 		outDir := filepath.Join(traceDir, harness)
-		os.MkdirAll(outDir, 0o755)
+		if err := os.MkdirAll(outDir, 0o755); err != nil {
+			slog.Error("failed to create trace output directory", "dir", outDir, "error", err)
+			http.Error(w, fmt.Sprintf("cannot create output dir: %v", err), http.StatusInternalServerError)
+			return
+		}
 
 		traceFile := req.TraceFile
 		if traceFile == "" {
