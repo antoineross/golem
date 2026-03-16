@@ -26,7 +26,8 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { Badge } from "@/components/ui/badge";
-import { CpuIcon, WrenchIcon } from "lucide-react";
+import { CpuIcon } from "lucide-react";
+import { getToolConfig, filterKeyParams } from "@/lib/tool-config";
 
 interface TimelineProps {
   events: TimelineEvent[];
@@ -109,9 +110,7 @@ function LlmCallGroup({
   thoughts: TimelineEvent[];
   isFirst: boolean;
 }) {
-  const totalTokens = llm.tokens
-    ? llm.tokens.input + llm.tokens.output
-    : 0;
+  const totalTokens = llm.tokens ? llm.tokens.input + llm.tokens.output : 0;
   const hasContent = tools.length > 0 || thoughts.length > 0;
 
   const headerLabel = (
@@ -169,45 +168,55 @@ function LlmCallGroup({
         ))}
 
         {tools.map((tc) => (
-          <ToolCallStep key={tc.id} event={tc} />
+          <StaticToolCallStep key={tc.id} event={tc} />
         ))}
       </ChainOfThoughtContent>
     </ChainOfThought>
   );
 }
 
-function ToolCallStep({ event }: { event: TimelineEvent }) {
+function StaticToolCallStep({ event }: { event: TimelineEvent }) {
+  const toolName = event.tool_name ?? "tool";
+  const config = getToolConfig(toolName);
+
   let parsedArgs: Record<string, unknown> = {};
   if (event.tool_args) {
     try { parsedArgs = JSON.parse(event.tool_args); } catch { parsedArgs = { raw: event.tool_args }; }
   }
+  const displayArgs = filterKeyParams(parsedArgs, config.keyParams);
 
   let parsedOutput: unknown = undefined;
   if (event.tool_response) {
     try { parsedOutput = JSON.parse(event.tool_response); } catch { parsedOutput = event.tool_response; }
   }
 
+  const hasScreenshot = Boolean(event.screenshot_url);
+
   return (
-    <ChainOfThoughtStep icon={WrenchIcon} label={event.tool_name ?? "tool"} status="complete">
-      <Tool defaultOpen={true}>
+    <ChainOfThoughtStep
+      icon={config.icon}
+      label={<span className={config.color}>{toolName}</span>}
+      status="complete"
+    >
+      <Tool defaultOpen={hasScreenshot ? true : config.defaultOpen}>
         <ToolHeader
           type="dynamic-tool"
-          toolName={event.tool_name ?? "tool"}
+          toolName={toolName}
           state="output-available"
-          title={event.tool_name ?? "tool"}
+          title={toolName}
         />
         <ToolContent>
-          {event.tool_args && <ToolInput input={parsedArgs} />}
+          <ToolInput input={displayArgs} />
           {parsedOutput !== undefined && <ToolOutput output={parsedOutput} errorText={undefined} />}
         </ToolContent>
       </Tool>
 
       {event.screenshot_url && (
-        <ChainOfThoughtImage caption={`Screenshot from ${event.tool_name}`}>
+        <ChainOfThoughtImage caption={`Screenshot from ${toolName}`}>
           <img
             src={event.screenshot_url}
-            alt={`Screenshot from ${event.tool_name}`}
-            className="max-w-full max-h-72 object-contain"
+            alt={`Screenshot from ${toolName}`}
+            className="max-w-full max-h-96 object-contain rounded"
           />
         </ChainOfThoughtImage>
       )}

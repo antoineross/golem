@@ -21,7 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import type { StreamingLlmCall, StreamingToolCall } from "@/types/streaming";
 import { CameraIcon } from "@heroicons/react/20/solid";
-import { CpuIcon, WrenchIcon } from "lucide-react";
+import { CpuIcon } from "lucide-react";
+import { getToolConfig, filterKeyParams } from "@/lib/tool-config";
 
 interface LlmCallTreeProps {
   call: StreamingLlmCall;
@@ -61,11 +62,7 @@ export function LlmCallTree({ call, toolCalls, thoughts, isFirstCall, isStreamin
       <ChainOfThoughtHeader>{headerLabel}</ChainOfThoughtHeader>
       <ChainOfThoughtContent>
         {isFirstCall && call.promptText && (
-          <ChainOfThoughtStep
-            icon={CpuIcon}
-            label="Prompt context"
-            status="complete"
-          >
+          <ChainOfThoughtStep icon={CpuIcon} label="Prompt context" status="complete">
             <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono max-h-48 overflow-y-auto rounded-md bg-muted p-2">
               {call.promptText}
             </pre>
@@ -101,7 +98,7 @@ export function LlmCallTree({ call, toolCalls, thoughts, isFirstCall, isStreamin
         ))}
 
         {toolCalls.map((tc) => (
-          <ToolCallStep key={tc.id} toolCall={tc} />
+          <StreamingToolCallStep key={tc.id} toolCall={tc} />
         ))}
 
         {isPending && isStreaming && toolCalls.length === 0 && (
@@ -116,37 +113,35 @@ export function LlmCallTree({ call, toolCalls, thoughts, isFirstCall, isStreamin
   );
 }
 
-function ToolCallStep({ toolCall }: { toolCall: StreamingToolCall }) {
+function StreamingToolCallStep({ toolCall }: { toolCall: StreamingToolCall }) {
+  const config = getToolConfig(toolCall.name);
+
   let parsedArgs: Record<string, unknown> = {};
-  try {
-    parsedArgs = JSON.parse(toolCall.args);
-  } catch {
-    parsedArgs = { raw: toolCall.args };
-  }
+  try { parsedArgs = JSON.parse(toolCall.args); } catch { parsedArgs = { raw: toolCall.args }; }
+  const displayArgs = filterKeyParams(parsedArgs, config.keyParams);
 
   let parsedOutput: unknown = undefined;
   let errorText: string | undefined;
 
   if (toolCall.response) {
-    try {
-      parsedOutput = JSON.parse(toolCall.response);
-    } catch {
-      parsedOutput = toolCall.response;
-    }
+    try { parsedOutput = JSON.parse(toolCall.response); } catch { parsedOutput = toolCall.response; }
   }
-
   if (toolCall.state === "output-error") {
     errorText = toolCall.response ?? "Tool execution failed";
     parsedOutput = undefined;
   }
 
+  const isActive = toolCall.state === "input-available";
+  const hasScreenshot = Boolean(toolCall.screenshotUrl);
+  const toolOpen = isActive || hasScreenshot ? true : config.defaultOpen;
+
   return (
     <ChainOfThoughtStep
-      icon={WrenchIcon}
-      label={toolCall.name}
-      status={toolCall.state === "input-available" ? "active" : "complete"}
+      icon={config.icon}
+      label={<span className={config.color}>{toolCall.name}</span>}
+      status={isActive ? "active" : "complete"}
     >
-      <Tool defaultOpen={toolCall.state !== "output-available"}>
+      <Tool defaultOpen={toolOpen}>
         <ToolHeader
           type="dynamic-tool"
           toolName={toolCall.name}
@@ -154,7 +149,7 @@ function ToolCallStep({ toolCall }: { toolCall: StreamingToolCall }) {
           title={toolCall.name}
         />
         <ToolContent>
-          <ToolInput input={parsedArgs} />
+          <ToolInput input={displayArgs} />
           {(parsedOutput !== undefined || errorText) && (
             <ToolOutput output={parsedOutput} errorText={errorText} />
           )}
@@ -175,7 +170,7 @@ function ToolCallStep({ toolCall }: { toolCall: StreamingToolCall }) {
           <img
             src={toolCall.screenshotUrl}
             alt={`Screenshot from ${toolCall.name}`}
-            className="max-w-full max-h-72 object-contain"
+            className="max-w-full max-h-96 object-contain rounded"
           />
         </ChainOfThoughtImage>
       )}
