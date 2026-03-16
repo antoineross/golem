@@ -209,9 +209,13 @@ func (e *rateLimitError) Error() string {
 func isRetryableError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "429") ||
+		strings.Contains(msg, "Error 500") ||
+		strings.Contains(msg, "Error 503") ||
 		strings.Contains(msg, "RESOURCE_EXHAUSTED") ||
 		strings.Contains(msg, "resource has been exhausted") ||
 		strings.Contains(msg, "Resource has been exhausted") ||
+		strings.Contains(msg, "INTERNAL") ||
+		strings.Contains(msg, "UNAVAILABLE") ||
 		strings.Contains(msg, "quota")
 }
 
@@ -220,9 +224,12 @@ func isRetryableResponse(resp *model.LLMResponse) bool {
 		return false
 	}
 	code := strings.ToUpper(resp.ErrorCode)
-	return code == "429" ||
+	return code == "429" || code == "500" || code == "503" ||
 		strings.Contains(code, "RESOURCE_EXHAUSTED") ||
-		strings.Contains(strings.ToUpper(resp.ErrorMessage), "RESOURCE_EXHAUSTED")
+		strings.Contains(code, "INTERNAL") ||
+		strings.Contains(code, "UNAVAILABLE") ||
+		strings.Contains(strings.ToUpper(resp.ErrorMessage), "RESOURCE_EXHAUSTED") ||
+		strings.Contains(strings.ToUpper(resp.ErrorMessage), "INTERNAL ERROR")
 }
 
 // backoffDelay computes delay = min(baseDelay * 2^attempt, maxDelay) with

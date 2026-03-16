@@ -60,15 +60,35 @@ function buildScenarios(demoTargetUrl: string): Record<string, ScenarioConfig> {
   };
 }
 
+// Maps a trace file path from golem's mount namespace to the observer's.
+// e.g. /data/traces/agent/file.json -> /observer/traces/agent/file.json
+function mapGolemPathToLocal(golemPath: string, localTraceDir: string): string {
+  if (!golemPath) return "";
+  // Find the harness directory and filename after the base trace dir.
+  // Golem paths look like: /data/traces/<harness>/<file>.json
+  // We need: <localTraceDir>/<harness>/<file>.json
+  // Strategy: take everything after the third slash-separated segment
+  // that matches a common trace dir pattern (/data/traces/, /data/tmp/tests/, etc.)
+  const traceMarkers = ["/traces/", "/tests/"];
+  for (const marker of traceMarkers) {
+    const idx = golemPath.indexOf(marker);
+    if (idx !== -1) {
+      const relative = golemPath.slice(idx + marker.length);
+      return path.join(localTraceDir, relative);
+    }
+  }
+  // Fallback: use just the filename under localTraceDir
+  return path.join(localTraceDir, path.basename(golemPath));
+}
+
 async function startRunViaGolemApi(
   golemApiUrl: string,
   prompt: string,
   harness: string,
-  traceFile: string,
   apiKey?: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; trace_file?: string }> {
   try {
-    const payload: Record<string, string> = { prompt, harness, trace_file: traceFile };
+    const payload: Record<string, string> = { prompt, harness };
     if (apiKey) payload.api_key = apiKey;
     const resp = await fetch(`${golemApiUrl}/api/run`, {
       method: "POST",
@@ -79,7 +99,8 @@ async function startRunViaGolemApi(
       const body = await resp.text();
       return { ok: false, error: `golem API returned ${resp.status}: ${body}` };
     }
-    return { ok: true };
+    const data = await resp.json() as { trace_file?: string };
+    return { ok: true, trace_file: data.trace_file };
   } catch (e) {
     return { ok: false, error: `golem API unreachable: ${e}` };
   }
@@ -236,6 +257,27 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
     const harness = scenarioConfig?.harness ?? "agent";
     const prompt = customPrompt ?? scenarioConfig?.prompt ?? "";
 
+    if (useGolemApi) {
+      setAgentState({ status: "running", error: null, traceFile: null });
+
+      const result = await startRunViaGolemApi(config.golemApiUrl!, prompt, harness, userApiKey);
+      if (!result.ok) {
+        setAgentState({ status: "error", error: result.error ?? "failed to start agent" });
+        return c.json({ error: result.error }, 502);
+      }
+
+      const golemTraceFile = result.trace_file ?? "";
+      const localTraceFile = mapGolemPathToLocal(golemTraceFile, config.traceDir);
+      setAgentState({ status: "running", error: null, traceFile: localTraceFile });
+      pollGolemStatus(config.golemApiUrl!, golemTraceFile);
+
+      return c.json({
+        status: "running",
+        scenario,
+        trace_file: localTraceFile,
+      });
+    }
+
     const traceDir = path.join(config.traceDir, harness);
     try { fs.mkdirSync(traceDir, { recursive: true }); } catch {}
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -243,16 +285,7 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
 
     setAgentState({ status: "running", error: null, traceFile });
 
-    if (useGolemApi) {
-      const result = await startRunViaGolemApi(config.golemApiUrl!, prompt, harness, traceFile, userApiKey);
-      if (!result.ok) {
-        setAgentState({ status: "error", error: result.error ?? "failed to start agent" });
-        return c.json({ error: result.error }, 502);
-      }
-      pollGolemStatus(config.golemApiUrl!, traceFile);
-    } else {
-      startRunViaSpawn(config, harness, prompt, traceFile, userApiKey);
-    }
+    startRunViaSpawn(config, harness, prompt, traceFile, userApiKey);
 
     return c.json({
       status: "running",
