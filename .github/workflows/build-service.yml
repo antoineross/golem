@@ -1,0 +1,62 @@
+name: Build and Push Service
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        description: "Service display name"
+        required: true
+        type: string
+      service_path:
+        description: "Path to service directory (e.g., ./apps/golem)"
+        required: true
+        type: string
+      image_name:
+        description: "Docker image name (e.g., golem-agent)"
+        required: true
+        type: string
+      image_tag:
+        description: "Image tag (7-char SHA)"
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build ${{ inputs.service_name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      REGISTRY_URL: "${{ secrets.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure Docker for GAR
+        run: gcloud auth configure-docker ${{ secrets.GCP_LOCATION }}-docker.pkg.dev --quiet
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ inputs.service_path }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY_URL }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+            ${{ env.REGISTRY_URL }}/${{ inputs.image_name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

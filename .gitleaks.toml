@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''tmp/''',
+  '''\.env\.example$''',
+  '''apps/scraper/\.env\.example$''',
+  '''apps/demo-target/''',
+]
