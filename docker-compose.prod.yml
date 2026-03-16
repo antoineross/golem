@@ -41,11 +41,14 @@ services:
       - REDIS_ADDR=redis:6379
       - HTTP_ADDR=:8081
       - APP_ENV=production
+      - DATA_DIR=/data
       - LIGHTPANDA_CDP_URL=ws://localhost:9222
       - GEMINI_API_KEY=${GOOGLE_API_KEY:-}
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - screenshot-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/v1/health"]
@@ -82,7 +85,7 @@ services:
         condition: service_healthy
     volumes:
       - trace-data:/data/traces
-      - screenshot-data:/data/screenshots
+      - screenshot-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
@@ -101,7 +104,7 @@ services:
       - "traefik.http.services.observer.loadbalancer.server.port=3000"
     volumes:
       - trace-data:/data/tmp/tests:ro
-      - screenshot-data:/data/tmp/screenshots:ro
+      - screenshot-data:/data/tmp:ro
     environment:
       - TRACE_DIR=/data/tmp/tests
       - SCREENSHOT_DIR=/data/tmp/screenshots
