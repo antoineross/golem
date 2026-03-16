@@ -40,6 +40,7 @@ Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusiv
 | `artifact.InMemoryService` | `runner.go` | Screenshot persistence (wired, save calls deferred to v0.7) |
 | Lifecycle callbacks | `callbacks.go` | Structured logging of agent/model events |
 | Functional options | `agent.go` | `WithBeforeAgent`, `WithAfterAgent`, `WithBeforeModel`, `WithAfterModel` |
+| `ThinkingConfig` | `config.go` + `agent.go` | Gemini 3 thinking mode (medium by default), thought logging |
 
 ### session state keys
 
@@ -106,6 +107,9 @@ Optional variables:
 - `FALLBACK_LLM_MODEL` (default: gemini-3.1-flash-lite-preview)
 - `GOLEM_LOG_LEVEL` (default: info)
 - `GOLEM_TIMEOUT_SECONDS` (default: 120)
+- `GOLEM_THINKING_LEVEL` (default: medium) -- Gemini 3 thinking depth: low, medium, high, minimal
+- `GOLEM_INCLUDE_THOUGHTS` (default: true) -- return thought summaries in model responses
+- `GOLEM_THINKING_BUDGET` (default: 0) -- token budget for Gemini 2.5 models (0 = disabled)
 
 ## local development
 
@@ -186,6 +190,13 @@ Statuses: `SPEC`, `IN_PROGRESS`, `IMPLEMENTED`, `DEFERRED`, `SUPERSEDED`.
 
 - Proof over claims: save screenshots to `tmp/screenshots/` and logs to `tmp/tests/`.
 - Never claim a test passed without providing the output file path for human verification.
+- A task is NOT done until the human can inspect the results. Specifically:
+  1. Every E2E or integration test MUST write its output to `tmp/tests/` (under a descriptive subdirectory).
+  2. The agent MUST verify the output files exist on disk after the run (e.g. `ls -la tmp/tests/<subdir>/`).
+  3. The agent MUST print or display the full contents of the output files to the human.
+  4. If the output files are missing, empty, or in the wrong location, the task is failed -- fix and re-run.
+  5. Never say "results saved" without showing the file path AND the file contents to the human.
+- This applies to all agents working on this project, without exception.
 
 ## tmp/ workflow
 

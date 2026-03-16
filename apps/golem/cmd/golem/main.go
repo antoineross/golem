@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/artifact"
@@ -24,10 +25,35 @@ func main() {
 
 	ctx := context.Background()
 
+	otelCfg := golemAdk.LoadOtelConfig()
+	otelShutdown, err := golemAdk.SetupOtel(ctx, otelCfg, logger)
+	if err != nil {
+		slog.Warn("OTel setup failed, continuing without tracing", "error", err)
+	} else {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := otelShutdown(shutdownCtx); err != nil {
+				slog.Warn("OTel shutdown error", "error", err)
+			}
+		}()
+	}
+
+	llmCfg := golemAdk.LoadLLMConfig()
+
 	llm, err := golemAdk.NewModel(ctx, logger)
 	if err != nil {
 		slog.Error("failed to initialize model", "error", err)
 		os.Exit(1)
+	}
+
+	generateCfg := llmCfg.GenerateContentConfig()
+	if llmCfg.ThinkingActive() {
+		slog.Info("thinking mode enabled",
+			"level", llmCfg.ThinkingLevel,
+			"budget", llmCfg.ThinkingBudget,
+			"include_thoughts", llmCfg.IncludeThoughts,
+		)
 	}
 
 	tools, hasBrowse, err := buildTools(ctx)
@@ -38,7 +64,7 @@ func main() {
 
 	callbacks := golemAdk.NewCallbacks(logger)
 
-	auditor, err := golemAdk.NewAuditor(llm, tools,
+	auditor, err := golemAdk.NewAuditor(llm, tools, generateCfg,
 		golemAdk.WithBeforeAgent(callbacks.BeforeAgent),
 		golemAdk.WithAfterAgent(callbacks.AfterAgent),
 		golemAdk.WithBeforeModel(callbacks.BeforeModel),
@@ -99,13 +125,21 @@ func main() {
 					"result", part.FunctionResponse.Response,
 				)
 			}
+			if part.Thought && part.Text != "" {
+				slog.Debug("model thought detail",
+					"text_len", len(part.Text),
+					"text", truncateRunes(part.Text, 500),
+				)
+				slog.Info("model thought received", "text_len", len(part.Text))
+				continue
+			}
 			if part.Text != "" {
 				if event.IsFinalResponse() {
 					fmt.Println("\n--- AGENT RESPONSE ---")
 					fmt.Println(part.Text)
 					fmt.Println("--- END ---")
 				} else {
-					slog.Info("agent thinking", "text", part.Text)
+					slog.Info("agent intermediate", "text", part.Text)
 				}
 			}
 		}
@@ -155,4 +189,12 @@ func buildTools(ctx context.Context) ([]tool.Tool, bool, error) {
 
 	tools = append(tools, supacrawlTools...)
 	return tools, true, nil
+}
+
+func truncateRunes(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + "..."
 }

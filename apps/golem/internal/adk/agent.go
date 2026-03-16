@@ -7,6 +7,7 @@ import (
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
 )
 
 // instructionProvider builds a dynamic system prompt by reading session state
@@ -26,19 +27,21 @@ func instructionProvider(ctx agent.ReadonlyContext) (string, error) {
 }
 
 // NewAuditor creates the golem_auditor agent with a dynamic system prompt
-// that adapts based on session state.
-func NewAuditor(llm model.LLM, tools []tool.Tool, opts ...AuditorOption) (agent.Agent, error) {
+// that adapts based on session state. When generateCfg is non-nil, it is
+// wired into the LLM agent (used to enable thinking mode).
+func NewAuditor(llm model.LLM, tools []tool.Tool, generateCfg *genai.GenerateContentConfig, opts ...AuditorOption) (agent.Agent, error) {
 	cfg := auditorConfig{}
 	for _, o := range opts {
 		o(&cfg)
 	}
 
 	agentCfg := llmagent.Config{
-		Name:                "golem_auditor",
-		Description:         "Autonomous security auditor that finds business-logic vulnerabilities in web applications using visual reasoning and systematic testing",
-		Model:               llm,
-		InstructionProvider: instructionProvider,
-		Tools:               tools,
+		Name:                  "golem_auditor",
+		Description:           "Autonomous security auditor that finds business-logic vulnerabilities in web applications using visual reasoning and systematic testing",
+		Model:                 llm,
+		InstructionProvider:   instructionProvider,
+		Tools:                 tools,
+		GenerateContentConfig: generateCfg,
 	}
 
 	if cfg.beforeAgent != nil {
