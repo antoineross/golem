@@ -30,27 +30,33 @@ export function useAgentStream({ enabled, onComplete }: UseAgentStreamOptions) {
     setState((prev) => ({ ...prev, status: "connecting" }));
 
     const es = new EventSource(`${API_BASE}/api/agent/stream`);
+    let closed = false;
+
+    const finish = (status: StreamState["status"], error?: string | null) => {
+      if (closed) return;
+      closed = true;
+      es.close();
+      setState((prev) => {
+        const next = { ...prev, status, error: error ?? prev.error };
+        onCompleteRef.current?.(next);
+        return next;
+      });
+    };
 
     es.addEventListener("control", (e) => {
+      if (closed) return;
       try {
         const control = JSON.parse(e.data);
         if (control.type === "stream_start") {
+          if (control.status === "idle") {
+            finish("complete");
+            return;
+          }
           setState((prev) => ({ ...prev, status: "streaming" }));
         } else if (control.type === "stream_end") {
-          const finalStatus = control.status === "error" ? "error" : "complete";
-          setState((prev) => {
-            const next = {
-              ...prev,
-              status: finalStatus as StreamState["status"],
-              error: control.error ?? prev.error,
-            };
-            onCompleteRef.current?.(next);
-            return next;
-          });
-          es.close();
+          finish(control.status === "error" ? "error" : "complete", control.error);
         } else if (control.type === "stream_timeout") {
-          setState((prev) => ({ ...prev, status: "error", error: "Stream timed out" }));
-          es.close();
+          finish("error", "Stream timed out");
         }
       } catch {
         // skip malformed control
@@ -58,24 +64,18 @@ export function useAgentStream({ enabled, onComplete }: UseAgentStreamOptions) {
     });
 
     es.addEventListener("agent_event", (e) => {
+      if (closed) return;
       const event = parseAgentEvent(e.data);
       if (!event) return;
-
       setState((prev) => reduceStreamEvent(prev, event));
     });
 
     es.onerror = () => {
-      if (stateRef.current.status === "streaming" || stateRef.current.status === "connecting") {
-        setState((prev) => {
-          const next = { ...prev, status: "error" as const, error: "Connection lost" };
-          onCompleteRef.current?.(next);
-          return next;
-        });
-      }
-      es.close();
+      finish("error", "Connection lost");
     };
 
     return () => {
+      closed = true;
       es.close();
     };
   }, [enabled]);
