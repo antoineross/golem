@@ -4,6 +4,7 @@ import Link from "next/link";
 import "./globals.css";
 import { appConfig } from "./data";
 import { ConfigScript } from "./config-script";
+import { SupportFab } from "./support-fab";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,6 +36,7 @@ export default function RootLayout({
         </nav>
         {children}
         <ConfigScript config={appConfig} />
+        <SupportFab />
       </body>
     </html>
   );

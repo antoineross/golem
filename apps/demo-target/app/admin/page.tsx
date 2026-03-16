@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { users } from "../data";
 import { AdminDebug } from "./admin-debug";
+import { DeleteDbButton } from "./delete-db-button";
+import { NewsletterModal } from "./newsletter-modal";
 
-// VULNERABILITY: no authentication, accessible to anyone
 export default async function AdminPage(props: { searchParams: Promise<{ bypass?: string }> }) {
   const searchParams = await props.searchParams;
   const bypassEnabled = searchParams.bypass === "true";
@@ -10,7 +12,10 @@ export default async function AdminPage(props: { searchParams: Promise<{ bypass?
     <main className="max-w-6xl mx-auto px-4 py-12">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold">Admin Panel</h1>
-        <span className="text-sm text-gray-400">Internal Use Only</span>
+        <div className="flex items-center gap-4">
+          <Link href="/system-health" className="text-sm text-blue-600 hover:text-blue-800">System Health</Link>
+          <span className="text-sm text-gray-400">Internal Use Only</span>
+        </div>
       </div>
 
       {bypassEnabled && <AdminDebug />}
@@ -53,6 +58,9 @@ export default async function AdminPage(props: { searchParams: Promise<{ bypass?
           </tbody>
         </table>
       </div>
+
+      <DeleteDbButton />
+      <NewsletterModal />
     </main>
   );
 }
