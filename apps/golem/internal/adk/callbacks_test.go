@@ -3,9 +3,12 @@ package adk
 import (
 	"bytes"
 	"log/slog"
+	"os"
+	"strings"
 	"testing"
 
 	"google.golang.org/adk/model"
+	"google.golang.org/genai"
 )
 
 func TestNewCallbacks(t *testing.T) {
@@ -82,5 +85,63 @@ func TestExtractPromptText_Nil(t *testing.T) {
 	result := extractPromptText(&model.LLMRequest{})
 	if result != "" {
 		t.Errorf("expected empty string for nil contents, got %q", result)
+	}
+}
+
+func TestExtractPromptText_WithContent(t *testing.T) {
+	req := &model.LLMRequest{
+		Contents: []*genai.Content{
+			genai.NewContentFromText("Hello world", genai.RoleUser),
+		},
+	}
+	result := extractPromptText(req)
+	if result != "[user] Hello world" {
+		t.Errorf("unexpected prompt text: %q", result)
+	}
+}
+
+func TestExtractPromptText_MultiPart(t *testing.T) {
+	req := &model.LLMRequest{
+		Contents: []*genai.Content{
+			genai.NewContentFromText("first", genai.RoleUser),
+			genai.NewContentFromText("second", genai.RoleModel),
+		},
+	}
+	result := extractPromptText(req)
+	if !strings.Contains(result, "[user] first") {
+		t.Errorf("missing user part in %q", result)
+	}
+	if !strings.Contains(result, "[model] second") {
+		t.Errorf("missing model part in %q", result)
+	}
+}
+
+func TestCallbacksWriteToTraceWriter(t *testing.T) {
+	tmpFile := t.TempDir() + "/trace_otel.json"
+	tw, err := NewTraceWriter(tmpFile)
+	if err != nil {
+		t.Fatalf("NewTraceWriter: %v", err)
+	}
+	defer tw.Close()
+
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+	cb := NewCallbacks(logger, tw, "test-model")
+
+	if cb.tw == nil {
+		t.Fatal("TraceWriter not set on callbacks")
+	}
+	if cb.model != "test-model" {
+		t.Fatalf("model = %q, want test-model", cb.model)
+	}
+
+	tw.Write(TraceEvent{Type: "test_event", Agent: "test"})
+	tw.Close()
+
+	data, err := os.ReadFile(tw.Path())
+	if err != nil {
+		t.Fatalf("read events file: %v", err)
+	}
+	if !strings.Contains(string(data), "test_event") {
+		t.Errorf("events file does not contain test_event: %s", string(data))
 	}
 }
