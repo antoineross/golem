@@ -29,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tools, err := buildTools(ctx)
+	tools, hasBrowse, err := buildTools(ctx)
 	if err != nil {
 		slog.Error("failed to create tools", "error", err)
 		os.Exit(1)
@@ -56,7 +56,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	prompt := "Browse https://example.com and describe what you see."
+	prompt := defaultPrompt(hasBrowse)
 	if len(os.Args) > 1 {
 		prompt = os.Args[1]
 	}
@@ -102,15 +102,23 @@ func main() {
 	slog.Info("agent run complete")
 }
 
-func buildTools(ctx context.Context) ([]tool.Tool, error) {
+func defaultPrompt(hasBrowse bool) string {
+	if hasBrowse {
+		return "Browse https://example.com and describe what you see."
+	}
+	return "Echo 'hello' to verify tool calling works, then list the available payload categories."
+}
+
+// buildTools creates the agent tool set and reports whether browse-capable tools are available.
+func buildTools(ctx context.Context) ([]tool.Tool, bool, error) {
 	echoTool, err := golemAdk.NewEchoTool()
 	if err != nil {
-		return nil, fmt.Errorf("create echo tool: %w", err)
+		return nil, false, fmt.Errorf("create echo tool: %w", err)
 	}
 
 	payloadTool, err := golemAdk.NewPayloadTool()
 	if err != nil {
-		return nil, fmt.Errorf("create payload tool: %w", err)
+		return nil, false, fmt.Errorf("create payload tool: %w", err)
 	}
 
 	tools := []tool.Tool{echoTool, payloadTool}
@@ -118,21 +126,21 @@ func buildTools(ctx context.Context) ([]tool.Tool, error) {
 	client, err := supacrawl.NewClient()
 	if err != nil {
 		slog.Warn("supacrawl not configured, running with echo and payload tools only", "error", err)
-		return tools, nil
+		return tools, false, nil
 	}
 
 	if err := client.Health(ctx); err != nil {
 		slog.Warn("supacrawl not reachable, running with echo and payload tools only", "error", err)
-		return tools, nil
+		return tools, false, nil
 	}
 
 	slog.Info("supacrawl connected")
 
 	supacrawlTools, err := golemAdk.NewSupacrawlTools(client)
 	if err != nil {
-		return nil, fmt.Errorf("create supacrawl tools: %w", err)
+		return nil, false, fmt.Errorf("create supacrawl tools: %w", err)
 	}
 
 	tools = append(tools, supacrawlTools...)
-	return tools, nil
+	return tools, true, nil
 }

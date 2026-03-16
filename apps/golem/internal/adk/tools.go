@@ -67,12 +67,12 @@ func NewBrowseTool(client *supacrawl.Client) (tool.Tool, error) {
 
 		content := resp.Content
 		if len(content) > 8000 {
-			content = content[:8000] + "\n... [truncated]"
+			content = truncateUTF8(content, 8000) + "\n... [truncated]"
 		}
 
 		html := resp.HTML
 		if len(html) > 8000 {
-			html = html[:8000] + "\n... [truncated]"
+			html = truncateUTF8(html, 8000) + "\n... [truncated]"
 		}
 
 		return browseResult{
@@ -196,7 +196,7 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 		} else if scrapeResp != nil {
 			content = scrapeResp.Content
 			if len(content) > 4000 {
-				content = content[:4000] + "\n... [truncated]"
+				content = truncateUTF8(content, 4000) + "\n... [truncated]"
 			}
 		}
 
