@@ -70,6 +70,9 @@ func NewBrowseTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool, er
 			Fresh:       args.Fresh,
 		})
 		if err != nil {
+			if g != nil {
+				g.RecordFailure("browse", args.URL)
+			}
 			return browseResult{}, fmt.Errorf("browse %s: %w", args.URL, err)
 		}
 
@@ -141,7 +144,7 @@ func NewScreenshotTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool
 			} else if warn != "" {
 				slog.Warn(warn, "tool", "screenshot")
 			}
-			if g.FailureCount("screenshot", args.URL) >= 3 {
+			if g.RetriesExceeded("screenshot", args.URL) {
 				return screenshotResult{}, fmt.Errorf("screenshot for %s has failed %d times, try a different approach", args.URL, g.FailureCount("screenshot", args.URL))
 			}
 		}
@@ -203,7 +206,8 @@ type clickArgs struct {
 type clickResult struct {
 	URL           string `json:"url"`
 	Clicked       string `json:"clicked_selector"`
-	ScreenshotURL string `json:"screenshot_url"`
+	ClickExecuted bool   `json:"click_executed"`
+	ScreenshotURL string `json:"screenshot_url,omitempty"`
 	Content       string `json:"content_after_click"`
 }
 
@@ -223,6 +227,7 @@ func NewClickTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool, err
 			}
 		}
 		var screenshotURL string
+		clickExecuted := false
 
 		screenshotResp, err := client.Screenshot(tc, supacrawl.ScreenshotRequest{
 			URL:           args.URL,
@@ -235,7 +240,11 @@ func NewClickTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool, err
 		if err != nil {
 			slog.Warn("click screenshot failed, continuing with scrape",
 				"url", args.URL, "selector", args.Selector, "error", err)
+			if g != nil {
+				g.RecordFailure("click", args.URL)
+			}
 		} else {
+			clickExecuted = true
 			screenshotURL = screenshotResp.Screenshot
 			if err := stateAppendString(tc.State(), StateKeyScreenshots, screenshotURL); err != nil {
 				slog.Warn("failed to update screenshots state", "url", args.URL, "error", err)
@@ -264,6 +273,7 @@ func NewClickTool(client *supacrawl.Client, guard ...*ToolGuard) (tool.Tool, err
 		return clickResult{
 			URL:           args.URL,
 			Clicked:       args.Selector,
+			ClickExecuted: clickExecuted,
 			ScreenshotURL: screenshotURL,
 			Content:       content,
 		}, nil

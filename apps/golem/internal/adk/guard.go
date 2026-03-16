@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+type failureKey struct {
+	tool string
+	url  string
+}
+
 // ToolGuard tracks per-tool retry counts and enforces a global step budget.
 // Shared across all tool closures via capture. Safe for concurrent use.
 type ToolGuard struct {
@@ -12,8 +17,8 @@ type ToolGuard struct {
 	maxRetries     int
 	maxTotalCalls  int
 	totalCalls     int
-	failures       map[string]int // key: "tool:url"
-	warnThreshold  float64        // fraction of maxTotalCalls to emit warning
+	failures       map[failureKey]int
+	warnThreshold  float64
 	warningEmitted bool
 }
 
@@ -21,7 +26,7 @@ func NewToolGuard(maxRetries, maxTotalCalls int) *ToolGuard {
 	return &ToolGuard{
 		maxRetries:    maxRetries,
 		maxTotalCalls: maxTotalCalls,
-		failures:      make(map[string]int),
+		failures:      make(map[failureKey]int),
 		warnThreshold: 0.8,
 	}
 }
@@ -53,16 +58,29 @@ func (g *ToolGuard) RecordFailure(toolName, url string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	key := toolName + ":" + url
-	g.failures[key]++
-	return g.maxRetries > 0 && g.failures[key] > g.maxRetries
+	k := failureKey{tool: toolName, url: url}
+	g.failures[k]++
+	return g.maxRetries > 0 && g.failures[k] > g.maxRetries
+}
+
+// RetriesExceeded returns true if the configured retry limit has been
+// reached for the given tool+url pair. Returns false when maxRetries is 0
+// (unlimited mode).
+func (g *ToolGuard) RetriesExceeded(toolName, url string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.maxRetries <= 0 {
+		return false
+	}
+	return g.failures[failureKey{tool: toolName, url: url}] >= g.maxRetries
 }
 
 // FailureCount returns the current failure count for a tool+url pair.
 func (g *ToolGuard) FailureCount(toolName, url string) int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.failures[toolName+":"+url]
+	return g.failures[failureKey{tool: toolName, url: url}]
 }
 
 // TotalCalls returns the current total call count.

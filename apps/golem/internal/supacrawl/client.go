@@ -217,9 +217,9 @@ func (c *Client) pollScreenshot(ctx context.Context, jobID string) (*ScreenshotG
 	params.Set("job_id", jobID)
 	endpoint := fmt.Sprintf("%s/v1/screenshots?%s", c.baseURL, params.Encode())
 
-	maxAttempts := 30
+	maxAttempts := 20
 	backoff := time.Second
-	const maxBackoff = 4 * time.Second
+	const maxBackoff = 3 * time.Second
 
 	for i := 0; i < maxAttempts; i++ {
 		select {
@@ -259,7 +259,13 @@ func (c *Client) pollScreenshot(ctx context.Context, jobID string) (*ScreenshotG
 		case "failed":
 			return nil, fmt.Errorf("screenshot job failed: %s", result.Error)
 		case "processing":
-			time.Sleep(backoff)
+			timer := time.NewTimer(backoff)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
 			if backoff < maxBackoff {
 				backoff = backoff * 3 / 2
 				if backoff > maxBackoff {

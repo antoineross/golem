@@ -97,3 +97,51 @@ func TestToolGuard_NoBudget(t *testing.T) {
 		t.Fatal("should not exceed limit when maxRetries is 0")
 	}
 }
+
+func TestToolGuard_RetriesExceeded(t *testing.T) {
+	g := NewToolGuard(2, 50)
+
+	if g.RetriesExceeded("screenshot", "https://example.com") {
+		t.Fatal("should not be exceeded with 0 failures")
+	}
+
+	g.RecordFailure("screenshot", "https://example.com")
+	if g.RetriesExceeded("screenshot", "https://example.com") {
+		t.Fatal("should not be exceeded after 1 failure (limit=2)")
+	}
+
+	g.RecordFailure("screenshot", "https://example.com")
+	if !g.RetriesExceeded("screenshot", "https://example.com") {
+		t.Fatal("should be exceeded after 2 failures (limit=2)")
+	}
+
+	if g.RetriesExceeded("screenshot", "https://other.com") {
+		t.Fatal("different URL should not be exceeded")
+	}
+}
+
+func TestToolGuard_RetriesExceeded_Unlimited(t *testing.T) {
+	g := NewToolGuard(0, 50)
+
+	for i := 0; i < 100; i++ {
+		g.RecordFailure("screenshot", "https://example.com")
+	}
+
+	if g.RetriesExceeded("screenshot", "https://example.com") {
+		t.Fatal("RetriesExceeded should always return false when maxRetries=0")
+	}
+}
+
+func TestToolGuard_KeyCollisionSafe(t *testing.T) {
+	g := NewToolGuard(3, 50)
+
+	g.RecordFailure("a:b", "c")
+	g.RecordFailure("a", "b:c")
+
+	if g.FailureCount("a:b", "c") != 1 {
+		t.Errorf("expected 1 failure for tool=a:b url=c, got %d", g.FailureCount("a:b", "c"))
+	}
+	if g.FailureCount("a", "b:c") != 1 {
+		t.Errorf("expected 1 failure for tool=a url=b:c, got %d", g.FailureCount("a", "b:c"))
+	}
+}
