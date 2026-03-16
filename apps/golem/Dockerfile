@@ -18,6 +18,7 @@ WORKDIR /app
 RUN mkdir -p /app/tmp
 COPY --from=builder /bin/golem-server /bin/golem-server
 COPY --from=builder /bin/golem /app/tmp/golem
+ENV GOLEM_CLI_PATH=/app/tmp/golem
 
 EXPOSE 8080
 ENTRYPOINT ["/bin/golem-server"]
