@@ -137,9 +137,9 @@ cp .env.example .env.local    # fill in API keys
 
 Never bypass the wrapper with raw docker compose commands. The wrapper handles env file selection (`--env-file`), project naming, and consistent behavior.
 
-**Process management**: Always use `./golem stop` to shut down services. Never use `kill`, `kill -9`, `lsof -ti:PORT | xargs kill`, `pkill`, or any manual signal to stop golem services. This includes port 3000 (observer), port 8083 (scraper), port 6380 (redis), and port 8081 (golem). Killing processes by port or PID corrupts Docker containers and breaks other running Docker services (e.g. nanowhale). The `./golem stop` command runs `docker compose down` which cleanly shuts down only golem's containers without affecting anything else.
+**CRITICAL -- process management**: Always use `./golem stop` to shut down services. NEVER use `kill`, `kill -9`, `lsof -ti:PORT | xargs kill`, `pkill`, or any manual signal to stop golem services. This applies to ALL ports: 3000 (observer), 8083 (scraper), 6380 (redis), 8081 (golem). Killing processes by port or PID corrupts Docker containers and can break other running Docker services on the host. The `./golem stop` command runs `docker compose down` which cleanly shuts down only golem's containers without affecting anything else. There are ZERO exceptions to this rule.
 
-**Never run raw `bun run server.ts` or `curl` against localhost to test the observer.** Use `./golem start --observer` to start it and `./golem status` to verify. For E2E testing, use `./golem e2e <harness>`. For unit tests, use `./golem test`.
+**CRITICAL -- never run services directly**: NEVER run `bun run server.ts`, `bun run dev`, `node server.ts`, or any direct process start for the observer or any other service. NEVER use `PORT=3000 bun run server.ts &` or similar. All services run in Docker via `./golem start`. To start the observer specifically, use `./golem start --observer`. To rebuild after code changes, use `./golem build observer`. To verify, use `./golem status`. For E2E testing, use `./golem e2e <harness>`. For unit tests, use `./golem test`. For Playwright visual testing, point the browser at the Docker-served URL (port 3000). There are ZERO exceptions to this rule.
 
 | Do this | Not this |
 |---------|----------|

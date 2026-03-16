@@ -174,7 +174,7 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
         </Tooltip>
       </div>
 
-      <div className="max-h-[220px] overflow-y-auto px-2 pb-1">
+      <div className="px-2 pb-1">
         <Accordion className="space-y-0.5">
           {Object.entries(scenarios).map(([key, scenario]) => (
             <AccordionItem key={key} value={key} className="border-0">
