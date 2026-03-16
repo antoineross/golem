@@ -144,7 +144,7 @@ function StreamingToolCallStep({ toolCall }: { toolCall: StreamingToolCall }) {
         </ChainOfThoughtImage>
       )}
 
-      {toolCall.screenshotUrl && /^https?:\/\//i.test(toolCall.screenshotUrl) && (
+      {toolCall.screenshotUrl && (
         <ChainOfThoughtImage caption={`Screenshot from ${toolCall.name}`}>
           <img
             src={toolCall.screenshotUrl}

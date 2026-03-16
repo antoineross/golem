@@ -23,6 +23,8 @@ services:
       - HTTP_ADDR=:8081
       - APP_ENV=development
       - LIGHTPANDA_CDP_URL=ws://localhost:9222
+      - GEMINI_API_KEY=${SCRAPER_GEMINI_API_KEY:-${GOOGLE_API_KEY:-}}
+      - DATA_DIR=/data
     env_file:
       - path: ./apps/scraper/.env.example
         required: true
@@ -33,6 +35,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - scraper-data:/data
     restart: unless-stopped
 
   demo-target:
@@ -79,6 +83,7 @@ services:
     environment:
       - TRACE_DIR=/data/tmp/tests
       - SCREENSHOT_DIR=/data/tmp/screenshots
+      - SCRAPER_URL=http://scraper:8081
       - RUNNER_ENABLED=false
       - GOLEM_API_URL=http://golem:8080
       - DEMO_TARGET_URL=http://demo-target:4000
@@ -89,3 +94,4 @@ services:
 volumes:
   redis-data:
   golem-go-cache:
+  scraper-data:

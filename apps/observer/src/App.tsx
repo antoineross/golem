@@ -209,8 +209,8 @@ export default function App() {
           )}
         </aside>
 
-        <main className="flex-1 min-w-0 overflow-auto">
-          <div className="max-w-[1400px] mx-auto px-6 py-4 space-y-4">
+        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <div className={`max-w-[1400px] w-full mx-auto px-6 py-4 ${streamMode ? "flex flex-col flex-1 min-h-0" : "space-y-4 overflow-auto flex-1"}`}>
             {streamMode ? (
               <StreamingTimeline state={streamState} />
             ) : (

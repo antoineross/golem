@@ -209,10 +209,15 @@ jobs:
             GCP_LOCATION=${{ secrets.GCP_LOCATION }}
             GCP_REPOSITORY=${{ secrets.GCP_REPOSITORY }}
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+            GOOGLE_API_KEY_BACKUP=${{ secrets.GOOGLE_API_KEY_BACKUP }}
             DEFAULT_LLM_MODEL=gemini-3-flash-preview
+            FALLBACK_LLM_MODEL=gemini-3.1-flash-lite-preview
             GOLEM_LOG_LEVEL=info
             GOLEM_TIMEOUT_SECONDS=120
             GOLEM_THINKING_LEVEL=medium
+            GOLEM_RETRY_MAX=5
+            GOLEM_RETRY_BASE_DELAY_MS=2000
+            GOLEM_RETRY_MAX_DELAY_MS=30000
             DOMAIN=${{ secrets.DOMAIN }}
             ACME_EMAIL=${{ secrets.ACME_EMAIL }}
             ENVEOF

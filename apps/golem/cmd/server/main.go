@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,8 @@ type agentState struct {
 	status    string
 	traceFile string
 	err       string
+	cmd       *exec.Cmd
+	cancel    context.CancelFunc
 }
 
 var state = &agentState{status: "idle"}
@@ -42,6 +45,22 @@ func (s *agentState) set(status, traceFile, errMsg string) {
 		s.traceFile = traceFile
 	}
 	s.err = errMsg
+}
+
+func (s *agentState) stop() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.status != "running" {
+		return false
+	}
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.status = "error"
+	s.err = "agent stopped by user"
+	s.cmd = nil
+	s.cancel = nil
+	return true
 }
 
 type runRequest struct {
@@ -67,18 +86,24 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
-	mux.HandleFunc("POST /api/run", func(w http.ResponseWriter, r *http.Request) {
-		current := state.get()
-		if current["status"] == "running" {
-			http.Error(w, `{"error":"agent already running"}`, http.StatusConflict)
-			return
+	mux.HandleFunc("POST /api/stop", func(w http.ResponseWriter, r *http.Request) {
+		if state.stop() {
+			slog.Info("agent stopped by user request")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"error": "no agent running"})
 		}
+	})
 
-		// Reset any stale complete/error state before starting
-		state.set("idle", "", "")
+	mux.HandleFunc("POST /api/run", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
 
 		var req runRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
 			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 			return
 		}
@@ -96,16 +121,66 @@ func main() {
 			harness = "agent"
 		}
 
+		if strings.ContainsAny(harness, "/\\..") || strings.Contains(harness, "..") {
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, `{"error":"invalid harness name"}`, http.StatusBadRequest)
+			return
+		}
+
 		outDir := filepath.Join(traceDir, harness)
-		os.MkdirAll(outDir, 0o755)
+		if err := os.MkdirAll(outDir, 0o755); err != nil {
+			slog.Error("failed to create trace output directory", "dir", outDir, "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, `{"error":"cannot create output directory"}`, http.StatusInternalServerError)
+			return
+		}
 
 		traceFile := req.TraceFile
 		if traceFile == "" {
 			ts := time.Now().UTC().Format("20060102_150405")
 			traceFile = filepath.Join(outDir, fmt.Sprintf("%s_%s_otel_spans.json", harness, ts))
+		} else {
+			absTrace := filepath.Clean(traceFile)
+			absDir := filepath.Clean(traceDir)
+			if !strings.HasPrefix(absTrace, absDir+string(filepath.Separator)) {
+				w.Header().Set("Content-Type", "application/json")
+				http.Error(w, `{"error":"trace_file must be under trace directory"}`, http.StatusBadRequest)
+				return
+			}
+			traceFile = absTrace
 		}
 
-		state.set("running", traceFile, "")
+		cliPath := os.Getenv("GOLEM_CLI_PATH")
+		if cliPath == "" {
+			cliPath = "/app/tmp/golem"
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cmd := exec.CommandContext(ctx, cliPath, req.Prompt)
+		cmd.Dir = "/app"
+		cmd.Env = append(os.Environ(),
+			"GOLEM_TRACE_FILE="+traceFile,
+			"GOLEM_TRACE_CAPTURE_CONTENT=true",
+		)
+		if req.APIKey != "" {
+			cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
+		}
+
+		// Atomic check-and-set to prevent concurrent runs
+		state.mu.Lock()
+		if state.status == "running" {
+			state.mu.Unlock()
+			cancel()
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, `{"error":"agent already running"}`, http.StatusConflict)
+			return
+		}
+		state.status = "running"
+		state.traceFile = traceFile
+		state.err = ""
+		state.cmd = cmd
+		state.cancel = cancel
+		state.mu.Unlock()
 
 		go func() {
 			defer func() {
@@ -113,30 +188,24 @@ func main() {
 					slog.Error("agent goroutine panicked", "panic", r)
 					state.set("error", "", fmt.Sprintf("internal panic: %v", r))
 				}
+				state.mu.Lock()
+				state.cmd = nil
+				state.cancel = nil
+				state.mu.Unlock()
 			}()
 
 			hasCustomKey := req.APIKey != ""
 			slog.Info("starting agent run", "prompt", req.Prompt, "trace_file", traceFile, "harness", harness, "custom_key", hasCustomKey)
-
-			cliPath := os.Getenv("GOLEM_CLI_PATH")
-			if cliPath == "" {
-				cliPath = "/app/tmp/golem"
-			}
-			cmd := exec.Command(cliPath, req.Prompt)
-			cmd.Dir = "/app"
-			cmd.Env = append(os.Environ(),
-				"GOLEM_TRACE_FILE="+traceFile,
-				"GOLEM_TRACE_CAPTURE_CONTENT=true",
-			)
-			if req.APIKey != "" {
-				cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
-			}
 
 			var outputBuf cappedBuffer
 			cmd.Stdout = io.MultiWriter(os.Stdout, &outputBuf)
 			cmd.Stderr = io.MultiWriter(os.Stderr, &outputBuf)
 
 			if err := cmd.Run(); err != nil {
+				if ctx.Err() != nil {
+					slog.Info("agent run cancelled", "trace_file", traceFile)
+					return
+				}
 				errMsg := extractAgentError(outputBuf.String(), err)
 				slog.Error("agent run failed", "error", errMsg)
 				state.set("error", "", errMsg)
