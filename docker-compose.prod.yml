@@ -117,13 +117,14 @@ services:
       - SCREENSHOT_DIR=/observer/data/screenshots
       - SCRAPER_URL=http://scraper:8081
       - GOLEM_API_URL=http://golem:8080
+      - DEMO_TARGET_URL=http://demo-target:4000
       - RUNNER_ENABLED=false
     depends_on:
       golem:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
       interval: 15s
       timeout: 5s
       retries: 3

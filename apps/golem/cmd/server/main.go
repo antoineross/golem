@@ -99,16 +99,11 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /api/run", func(w http.ResponseWriter, r *http.Request) {
-		current := state.get()
-		if current["status"] == "running" {
-			http.Error(w, `{"error":"agent already running"}`, http.StatusConflict)
-			return
-		}
-
-		state.set("idle", "", "")
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
 
 		var req runRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
 			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 			return
 		}
@@ -126,10 +121,17 @@ func main() {
 			harness = "agent"
 		}
 
+		if strings.ContainsAny(harness, "/\\..") || strings.Contains(harness, "..") {
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, `{"error":"invalid harness name"}`, http.StatusBadRequest)
+			return
+		}
+
 		outDir := filepath.Join(traceDir, harness)
 		if err := os.MkdirAll(outDir, 0o755); err != nil {
 			slog.Error("failed to create trace output directory", "dir", outDir, "error", err)
-			http.Error(w, fmt.Sprintf("cannot create output dir: %v", err), http.StatusInternalServerError)
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, `{"error":"cannot create output directory"}`, http.StatusInternalServerError)
 			return
 		}
 
@@ -137,6 +139,15 @@ func main() {
 		if traceFile == "" {
 			ts := time.Now().UTC().Format("20060102_150405")
 			traceFile = filepath.Join(outDir, fmt.Sprintf("%s_%s_otel_spans.json", harness, ts))
+		} else {
+			absTrace := filepath.Clean(traceFile)
+			absDir := filepath.Clean(traceDir)
+			if !strings.HasPrefix(absTrace, absDir+string(filepath.Separator)) {
+				w.Header().Set("Content-Type", "application/json")
+				http.Error(w, `{"error":"trace_file must be under trace directory"}`, http.StatusBadRequest)
+				return
+			}
+			traceFile = absTrace
 		}
 
 		cliPath := os.Getenv("GOLEM_CLI_PATH")
@@ -155,7 +166,15 @@ func main() {
 			cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
 		}
 
+		// Atomic check-and-set to prevent concurrent runs
 		state.mu.Lock()
+		if state.status == "running" {
+			state.mu.Unlock()
+			cancel()
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, `{"error":"agent already running"}`, http.StatusConflict)
+			return
+		}
 		state.status = "running"
 		state.traceFile = traceFile
 		state.err = ""
