@@ -29,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tools, err := buildTools()
+	tools, err := buildTools(ctx)
 	if err != nil {
 		slog.Error("failed to create tools", "error", err)
 		os.Exit(1)
@@ -84,6 +84,7 @@ func main() {
 			if part.FunctionResponse != nil {
 				slog.Info("tool response",
 					"tool", part.FunctionResponse.Name,
+					"result", part.FunctionResponse.Response,
 				)
 			}
 			if part.Text != "" {
@@ -101,26 +102,31 @@ func main() {
 	slog.Info("agent run complete")
 }
 
-func buildTools() ([]tool.Tool, error) {
+func buildTools(ctx context.Context) ([]tool.Tool, error) {
 	echoTool, err := golemAdk.NewEchoTool()
 	if err != nil {
 		return nil, fmt.Errorf("create echo tool: %w", err)
 	}
 
-	tools := []tool.Tool{echoTool}
+	payloadTool, err := golemAdk.NewPayloadTool()
+	if err != nil {
+		return nil, fmt.Errorf("create payload tool: %w", err)
+	}
+
+	tools := []tool.Tool{echoTool, payloadTool}
 
 	client, err := supacrawl.NewClient()
 	if err != nil {
-		slog.Warn("supacrawl not configured, running with echo tool only", "error", err)
+		slog.Warn("supacrawl not configured, running with echo and payload tools only", "error", err)
 		return tools, nil
 	}
 
-	if err := client.Health(context.Background()); err != nil {
-		slog.Warn("supacrawl not reachable, running with echo tool only", "error", err)
+	if err := client.Health(ctx); err != nil {
+		slog.Warn("supacrawl not reachable, running with echo and payload tools only", "error", err)
 		return tools, nil
 	}
 
-	slog.Info("supacrawl connected", "url", os.Getenv("SUPACRAWL_API_URL"))
+	slog.Info("supacrawl connected")
 
 	supacrawlTools, err := golemAdk.NewSupacrawlTools(client)
 	if err != nil {

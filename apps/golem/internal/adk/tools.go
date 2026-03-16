@@ -185,13 +185,15 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 			return clickResult{}, fmt.Errorf("click %s on %s: %w", args.Selector, args.URL, err)
 		}
 
-		scrapeResp, err := client.Scrape(tc, args.URL, supacrawl.ScrapeOptions{
+		scrapeResp, scrapeErr := client.Scrape(tc, args.URL, supacrawl.ScrapeOptions{
 			Format: "markdown",
 			Fresh:  true,
 		})
 
 		content := ""
-		if err == nil && scrapeResp != nil {
+		if scrapeErr != nil {
+			content = fmt.Sprintf("[scrape after click failed: %v]", scrapeErr)
+		} else if scrapeResp != nil {
 			content = scrapeResp.Content
 			if len(content) > 4000 {
 				content = content[:4000] + "\n... [truncated]"

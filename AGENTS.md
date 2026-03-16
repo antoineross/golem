@@ -34,14 +34,15 @@ Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusiv
 
 The agent has these tools registered via `functiontool.New`:
 
-| Tool | Purpose | Supacrawl Endpoint |
-|------|---------|--------------------|
-| `echo` | Verify tool-call loop works | none (built-in) |
+| Tool | Purpose | Backend |
+|------|---------|---------|
+| `echo` | Verify tool-call loop works | built-in |
 | `browse` | Scrape a URL, get markdown + links + metadata | `GET /v1/scrape` |
 | `screenshot` | Take a screenshot, return image URL | `POST + GET /v1/screenshots` |
 | `click` | Click a CSS selector, screenshot + scrape the result | screenshot + scrape |
+| `payload` | Generate security testing payloads by category | built-in |
 
-Tool registration is graceful: if `SUPACRAWL_API_URL` is not set or the scraper is unreachable, the agent starts with `echo` only and logs a warning.
+Tool registration is graceful: if `SUPACRAWL_API_URL` is not set or the scraper is unreachable, the agent starts with `echo` and `payload` tools only and logs a warning.
 
 ## tech stack
 
@@ -188,9 +189,82 @@ These files are never committed but are read during local workflows and agent ve
 - Prefer concrete implementation over speculative abstraction.
 - When blocked by missing context, provide what is complete and identify the exact blocker.
 
+## how the agent uses tools
+
+The agent does NOT use MCP. Tools are registered directly with the ADK via `functiontool.New`, which wraps a Go function as a Gemini function-calling tool. When the agent runs:
+
+1. The ADK runner sends the user prompt + system instruction + tool schemas to Gemini.
+2. Gemini decides which tool to call and generates a `FunctionCall` with JSON args.
+3. The ADK runner deserializes the args, calls the Go function, and sends the result back to Gemini.
+4. Gemini reasons about the result and either calls another tool or produces a final text response.
+
+This loop continues until Gemini emits a final response (no more tool calls).
+
+```text
+Gemini LLM
+  |-- decides to browse a URL
+  |-- emits FunctionCall{name: "browse", args: {url: "..."}}
+  |
+ADK Runner
+  |-- deserializes args into browseArgs struct
+  |-- calls browseFn(toolContext, browseArgs)
+  |-- browseFn calls supacrawl.Client.Scrape(ctx, url, opts)
+  |-- supacrawl.Client makes HTTP GET to scraper /v1/scrape
+  |-- returns browseResult -> serialized to JSON -> sent back to Gemini
+  |
+Gemini LLM
+  |-- reads the markdown content, reasons about it
+  |-- decides to take a screenshot for visual confirmation
+  |-- emits FunctionCall{name: "screenshot", args: {url: "..."}}
+  |-- ... loop continues ...
+```
+
+The tools capture a `*supacrawl.Client` via closure, so no global state or dependency injection framework is needed. Tool functions receive `tool.Context` which embeds `context.Context` for proper cancellation.
+
+## testing policy
+
+Every PR must document what was tested. Three test levels exist:
+
+### level 1: unit tests (required per PR)
+
+Test individual functions and methods in isolation using `httptest` mock servers.
+
+| What | How | Example |
+|------|-----|---------|
+| HTTP client methods | `httptest.NewServer` -> client -> assert response | `client_test.go` |
+| Config loading | `t.Setenv` -> `LoadLLMConfig()` -> assert values | `config_test.go` |
+| Tool registration | `NewBrowseTool(client)` -> assert name/description | `tools_test.go` |
+| Pure functions | Direct call -> assert output | any `_test.go` |
+
+### level 2: integration tests (required when tooling allows)
+
+Test tool functions end-to-end with mock HTTP servers simulating the scraper API. These verify the full chain: tool args -> client call -> HTTP request -> response -> tool result.
+
+ADK `tool.Context` cannot be constructed outside the ADK internals, so tool invocation through `tool.Run()` is not testable without the full ADK runner. Instead, test at the client level with realistic arg patterns matching what tools would send.
+
+### level 3: E2E tests (deferred to v0.6)
+
+Test the full agent loop: real Gemini API + real/mock scraper + runner event loop. Requires `GOOGLE_API_KEY` and a running scraper service. These are manual smoke tests documented in `tmp/tests/`.
+
+### PR test documentation
+
+Every PR body must include a test plan section:
+
+```markdown
+## Test plan
+
+- [x] `go build ./...` passes
+- [x] `go vet ./...` passes
+- [x] `go test ./...` passes (N tests)
+- [x] pre-commit hooks pass
+- [ ] E2E smoke test (if applicable, with output path)
+```
+
 ## doc map
 
 - Canonical rules: `AGENTS.md`
 - GitHub Copilot instructions: `.github/copilot-instructions.md`
 - Scoped Copilot instructions: `.github/instructions/*.instructions.md`
+- AI code review guide: `.github/instructions/ai-code-review.instructions.md`
+- Copilot/Gemini review handler: `.github/instructions/copilot-review.instructions.md`
 - Gemini Code Assist config: `.gemini/`
