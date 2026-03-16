@@ -1,5 +1,5 @@
 import type { TimelineEvent } from "@/types/trace";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Accordion,
@@ -8,7 +8,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Brain, Wrench, MessageSquare, Bot, FileText } from "lucide-react";
+import { Brain, Wrench, MessageSquare, Bot, FileText, Camera } from "lucide-react";
 
 const typeConfig: Record<
   string,
@@ -76,42 +76,12 @@ export function Timeline({ events }: TimelineProps) {
 
 function TimelineCard({ event }: { event: TimelineEvent }) {
   const config = typeConfig[event.type] ?? typeConfig.text;
-  const hasExpandableContent =
-    event.text || event.tool_args || event.tool_response;
 
   const formatDuration = (ms?: number) => {
     if (ms === undefined) return "";
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(1)}s`;
   };
-
-  if (!hasExpandableContent) {
-    return (
-      <Card className={`border-l-2 ${config.borderColor}`}>
-        <CardHeader className="p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className={config.color}>{config.icon}</span>
-              <Badge variant="outline" className={`text-xs ${config.color}`}>
-                {config.badge}
-              </Badge>
-              <CardTitle className="text-sm">{event.title}</CardTitle>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {event.tokens && (
-                <span>
-                  {event.tokens.input + event.tokens.output} tokens
-                </span>
-              )}
-              {event.duration_ms !== undefined && (
-                <span>{formatDuration(event.duration_ms)}</span>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
-    );
-  }
 
   return (
     <AccordionItem value={event.id} className="border-0">
@@ -124,6 +94,9 @@ function TimelineCard({ event }: { event: TimelineEvent }) {
                 {config.badge}
               </Badge>
               <span className="text-sm">{event.title}</span>
+              {event.screenshot_url && (
+                <Camera className="h-3 w-3 text-amber-400" />
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {event.tokens && (
@@ -138,40 +111,66 @@ function TimelineCard({ event }: { event: TimelineEvent }) {
           </div>
         </AccordionTrigger>
         <AccordionContent className="px-3 pb-3">
-          <div className="space-y-2">
-            {event.tool_name && (
-              <ToolCallContent event={event} />
-            )}
-            {event.text && (
-              <pre className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted rounded p-3 max-h-96 overflow-y-auto font-mono">
-                {event.text}
-              </pre>
-            )}
-          </div>
+          <EventContent event={event} />
         </AccordionContent>
       </Card>
     </AccordionItem>
   );
 }
 
-function ToolCallContent({ event }: { event: TimelineEvent }) {
+function EventContent({ event }: { event: TimelineEvent }) {
   return (
     <div className="space-y-2">
-      {event.tool_args && (
+      {event.tool_name && event.tool_args && (
         <div>
-          <span className="text-xs font-medium text-muted-foreground">Arguments:</span>
-          <pre className="mt-1 text-xs text-green-300 bg-muted rounded p-2 font-mono overflow-x-auto">
+          <span className="text-xs font-medium text-muted-foreground">
+            Arguments:
+          </span>
+          <pre className="mt-1 text-xs text-green-600 dark:text-green-400 bg-muted rounded p-2 font-mono overflow-x-auto">
             {formatJson(event.tool_args)}
           </pre>
         </div>
       )}
-      {event.tool_response && (
+
+      {event.tool_name && event.tool_response && (
         <div>
-          <span className="text-xs font-medium text-muted-foreground">Response:</span>
-          <pre className="mt-1 text-xs text-orange-300 bg-muted rounded p-2 font-mono overflow-x-auto max-h-48 overflow-y-auto">
+          <span className="text-xs font-medium text-muted-foreground">
+            Response:
+          </span>
+          <pre className="mt-1 text-xs text-orange-600 dark:text-orange-400 bg-muted rounded p-2 font-mono overflow-x-auto max-h-48 overflow-y-auto">
             {formatJson(event.tool_response)}
           </pre>
         </div>
+      )}
+
+      {event.screenshot_url && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">
+            Screenshot:
+          </span>
+          <img
+            src={event.screenshot_url}
+            alt={`Screenshot from ${event.tool_name}`}
+            className="mt-1 rounded border border-border max-w-full max-h-64 object-contain"
+          />
+        </div>
+      )}
+
+      {event.text && !event.tool_name && (
+        <pre className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted rounded p-3 max-h-96 overflow-y-auto font-mono">
+          {event.text}
+        </pre>
+      )}
+
+      {event.tool_name && event.text && (
+        <details className="mt-1">
+          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+            Span metadata
+          </summary>
+          <pre className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap bg-muted rounded p-2 font-mono max-h-48 overflow-y-auto">
+            {event.text.split("\n").filter(l => !l.startsWith("Arguments:") && !l.startsWith("Response:") && !l.startsWith("{")).join("\n").trim()}
+          </pre>
+        </details>
       )}
     </div>
   );

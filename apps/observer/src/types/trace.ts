@@ -69,6 +69,7 @@ export interface TimelineEvent {
   tool_args?: string;
   tool_response?: string;
   text?: string;
+  screenshot_url?: string;
   span_id?: string;
   parent_id?: string;
   children?: TimelineEvent[];

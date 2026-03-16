@@ -29,8 +29,33 @@ function readTraceFile(filePath: string): string | null {
   }
 }
 
-function findTraceFiles(dir: string): Array<{ name: string; path: string; modified: string }> {
-  const results: Array<{ name: string; path: string; modified: string }> = [];
+function detectSource(filePath: string): "otel" | "thinking" {
+  try {
+    const content = fs.readFileSync(filePath, "utf-8");
+    const trimmed = content.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if ("parts" in parsed && "thinking_level" in parsed) return "thinking";
+      } catch {
+        // not a single valid JSON object -- likely concatenated OTel spans
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return "otel";
+}
+
+interface TraceFileMeta {
+  name: string;
+  path: string;
+  modified: string;
+  source: "otel" | "thinking";
+}
+
+function findTraceFiles(dir: string): TraceFileMeta[] {
+  const results: TraceFileMeta[] = [];
 
   function walk(current: string) {
     let entries: fs.Dirent[];
@@ -49,6 +74,7 @@ function findTraceFiles(dir: string): Array<{ name: string; path: string; modifi
           name: entry.name,
           path: full,
           modified: stat.mtime.toISOString(),
+          source: detectSource(full),
         });
       }
     }
