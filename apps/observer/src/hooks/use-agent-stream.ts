@@ -44,9 +44,7 @@ export function useAgentStream({ enabled, onComplete }: UseAgentStreamOptions) {
               status: finalStatus as StreamState["status"],
               error: control.error ?? prev.error,
             };
-            if (finalStatus === "complete") {
-              onCompleteRef.current?.(next);
-            }
+            onCompleteRef.current?.(next);
             return next;
           });
           es.close();
@@ -68,7 +66,11 @@ export function useAgentStream({ enabled, onComplete }: UseAgentStreamOptions) {
 
     es.onerror = () => {
       if (stateRef.current.status === "streaming" || stateRef.current.status === "connecting") {
-        setState((prev) => ({ ...prev, status: "error", error: "Connection lost" }));
+        setState((prev) => {
+          const next = { ...prev, status: "error" as const, error: "Connection lost" };
+          onCompleteRef.current?.(next);
+          return next;
+        });
       }
       es.close();
     };
