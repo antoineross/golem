@@ -71,6 +71,7 @@ type runRequest struct {
 	Harness   string `json:"harness"`
 	TraceFile string `json:"trace_file"`
 	APIKey    string `json:"api_key,omitempty"`
+	Model     string `json:"model,omitempty"`
 }
 
 func main() {
@@ -167,6 +168,9 @@ func main() {
 		)
 		if req.APIKey != "" {
 			cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
+		}
+		if req.Model != "" {
+			cmd.Env = append(cmd.Env, "DEFAULT_LLM_MODEL="+req.Model)
 		}
 
 		// Atomic check-and-set to prevent concurrent runs
