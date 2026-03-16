@@ -73,11 +73,16 @@ services:
       - SUPACRAWL_API_URL=http://scraper:8081
       - REDIS_ADDR=redis:6379
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GOOGLE_API_KEY_BACKUP=${GOOGLE_API_KEY_BACKUP:-}
       - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-gemini-3-flash-preview}
+      - FALLBACK_LLM_MODEL=${FALLBACK_LLM_MODEL:-gemini-3.1-flash-lite-preview}
       - GOLEM_LOG_LEVEL=${GOLEM_LOG_LEVEL:-info}
       - GOLEM_TIMEOUT_SECONDS=${GOLEM_TIMEOUT_SECONDS:-120}
       - GOLEM_THINKING_LEVEL=${GOLEM_THINKING_LEVEL:-medium}
       - GOLEM_TRACE_DIR=/data/traces
+      - GOLEM_RETRY_MAX=${GOLEM_RETRY_MAX:-5}
+      - GOLEM_RETRY_BASE_DELAY_MS=${GOLEM_RETRY_BASE_DELAY_MS:-2000}
+      - GOLEM_RETRY_MAX_DELAY_MS=${GOLEM_RETRY_MAX_DELAY_MS:-30000}
     depends_on:
       redis:
         condition: service_healthy
@@ -85,6 +90,7 @@ services:
         condition: service_healthy
     volumes:
       - trace-data:/data/traces
+      - screenshot-data:/data/screenshots:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
@@ -107,6 +113,8 @@ services:
     environment:
       - TRACE_DIR=/observer/traces
       - SCREENSHOT_DIR=/observer/data/screenshots
+      - SCRAPER_URL=http://scraper:8081
+      - GOLEM_API_URL=http://golem:8080
       - RUNNER_ENABLED=false
     depends_on:
       golem:
