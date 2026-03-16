@@ -37,10 +37,11 @@ interface ScenarioLauncherProps {
   onRunStarted: (traceFile: string) => void;
   onRunComplete?: () => void;
   apiKey?: string | null;
+  model?: string | null;
   onError?: (error: string | null) => void;
 }
 
-export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError }: ScenarioLauncherProps) {
+export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, model, onError }: ScenarioLauncherProps) {
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Record<string, Scenario>>({});
@@ -116,6 +117,7 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError 
     try {
       const payload: Record<string, string> = { scenario: scenarioKey };
       if (apiKey) payload.api_key = apiKey;
+      if (model) payload.model = model;
       const res = await fetch(`${API_BASE}/api/agent/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -141,6 +143,7 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError 
     try {
       const payload: Record<string, string> = { scenario: "agent", prompt: customPrompt };
       if (apiKey) payload.api_key = apiKey;
+      if (model) payload.model = model;
       const res = await fetch(`${API_BASE}/api/agent/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

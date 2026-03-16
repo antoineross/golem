@@ -104,10 +104,12 @@ async function startRunViaGolemApi(
   prompt: string,
   harness: string,
   apiKey?: string,
+  model?: string,
 ): Promise<{ ok: boolean; error?: string; trace_file?: string }> {
   try {
     const payload: Record<string, string> = { prompt, harness };
     if (apiKey) payload.api_key = apiKey;
+    if (model) payload.model = model;
     const resp = await fetch(`${golemApiUrl}/api/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -130,6 +132,7 @@ function startRunViaSpawn(
   prompt: string,
   traceFile: string,
   apiKey?: string,
+  model?: string,
 ): void {
   const golemScript = path.join(config.repoRoot, "golem");
   const args = ["e2e", harness];
@@ -137,6 +140,7 @@ function startRunViaSpawn(
 
   const env = { ...process.env, GOLEM_TRACE_FILE: traceFile } as NodeJS.ProcessEnv;
   if (apiKey) env.GOOGLE_API_KEY = apiKey;
+  if (model) env.DEFAULT_LLM_MODEL = model;
 
   const child = spawn(golemScript, args, {
     cwd: config.repoRoot,
@@ -266,6 +270,8 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
     const scenario = typeof body?.scenario === "string" ? body.scenario : "level0";
     const customPrompt = typeof body?.prompt === "string" ? body.prompt : undefined;
     const userApiKey = typeof body?.api_key === "string" ? body.api_key : undefined;
+    const rawModel = typeof body?.model === "string" ? body.model.trim() : "";
+    const userModel = rawModel.length > 0 && rawModel.length <= 100 ? rawModel : undefined;
 
     const scenarioConfig = SCENARIOS[scenario];
     if (!scenarioConfig && !customPrompt) {
@@ -278,7 +284,7 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
     if (useGolemApi) {
       setAgentState({ status: "running", error: null, traceFile: null });
 
-      const result = await startRunViaGolemApi(config.golemApiUrl!, prompt, harness, userApiKey);
+      const result = await startRunViaGolemApi(config.golemApiUrl!, prompt, harness, userApiKey, userModel);
       if (!result.ok) {
         setAgentState({ status: "error", error: result.error ?? "failed to start agent" });
         return c.json({ error: result.error }, 502);
@@ -303,7 +309,7 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
 
     setAgentState({ status: "running", error: null, traceFile });
 
-    startRunViaSpawn(config, harness, prompt, traceFile, userApiKey);
+    startRunViaSpawn(config, harness, prompt, traceFile, userApiKey, userModel);
 
     return c.json({
       status: "running",

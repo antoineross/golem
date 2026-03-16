@@ -14,8 +14,14 @@ registerTraceRoutes(app, config);
 registerAgentRoutes(app, config);
 registerScreenshotRoutes(app, config);
 
+app.use("/assets/*", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "public, max-age=31536000, immutable");
+});
 app.use("/*", serveStatic({ root: "./dist" }));
-app.get("/*", serveStatic({ path: "./dist/index.html" }));
+app.get("/*", serveStatic({ path: "./dist/index.html", onFound: (_path, c) => {
+  c.header("Cache-Control", "no-cache, no-store, must-revalidate");
+}}));
 
 export default {
   port: config.port,

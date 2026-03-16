@@ -17,12 +17,14 @@ import { useAgentStream } from "@/hooks/use-agent-stream";
 import type { TraceSummary, TimelineEvent } from "@/types/trace";
 import { EyeIcon, ArrowPathIcon, PlayIcon, SignalIcon } from "@heroicons/react/20/solid";
 import { ApiKeyInput, useApiKey, isApiKeyError } from "@/components/api-key-input";
+import { ModelSelector, useModel } from "@/components/model-selector";
 
 type MainView = "timeline" | "raw";
 
 export default function App() {
   const { files, loading: filesLoading, refresh: refreshFiles } = useTraceList();
   const { apiKey, save: saveApiKey, clear: clearApiKey } = useApiKey();
+  const { model, save: saveModel } = useModel();
   const [agentError, setAgentError] = useState<string | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<string | null>(() => {
@@ -129,6 +131,7 @@ export default function App() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            <ModelSelector model={model} onSelect={saveModel} />
             <ApiKeyInput apiKey={apiKey} onSave={saveApiKey} onClear={clearApiKey} keyError={isApiKeyError(agentError) ? agentError : null} />
             <Tooltip>
               <TooltipTrigger render={<Button variant={replayMode ? "secondary" : "outline"} size="sm" onClick={() => { setReplayMode(!replayMode); setLiveEnabled(false); }} aria-label="Toggle replay mode" />}>
@@ -163,7 +166,7 @@ export default function App() {
       <div className="flex flex-1 min-h-0">
         <aside className="w-[280px] shrink-0 border-r border-border bg-muted/50 flex flex-col">
           <div className="border-b border-border relative z-10 bg-muted/50">
-            <ScenarioLauncher onRunStarted={handleRunStarted} onRunComplete={refreshFiles} apiKey={apiKey} onError={setAgentError} />
+            <ScenarioLauncher onRunStarted={handleRunStarted} onRunComplete={refreshFiles} apiKey={apiKey} model={model} onError={setAgentError} />
           </div>
 
           <div className="flex items-center justify-between px-3 pt-2 pb-1">
