@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/artifact"
@@ -23,6 +24,20 @@ func main() {
 	slog.SetDefault(logger)
 
 	ctx := context.Background()
+
+	otelCfg := golemAdk.LoadOtelConfig()
+	otelShutdown, err := golemAdk.SetupOtel(ctx, otelCfg, logger)
+	if err != nil {
+		slog.Warn("OTel setup failed, continuing without tracing", "error", err)
+	} else {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := otelShutdown(shutdownCtx); err != nil {
+				slog.Warn("OTel shutdown error", "error", err)
+			}
+		}()
+	}
 
 	llmCfg := golemAdk.LoadLLMConfig()
 

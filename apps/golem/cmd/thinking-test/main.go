@@ -34,10 +34,14 @@ type traceResult struct {
 }
 
 type partInfo struct {
-	Index   int    `json:"index"`
-	Thought bool   `json:"thought"`
-	TextLen int    `json:"text_len"`
-	Text    string `json:"text"`
+	Index        int    `json:"index"`
+	Type         string `json:"type"`
+	Thought      bool   `json:"thought,omitempty"`
+	TextLen      int    `json:"text_len,omitempty"`
+	Text         string `json:"text,omitempty"`
+	ToolName     string `json:"tool_name,omitempty"`
+	ToolArgs     any    `json:"tool_args,omitempty"`
+	ToolResponse any    `json:"tool_response,omitempty"`
 }
 
 const systemInstruction = `You are a security auditor analyzing web applications for business-logic vulnerabilities. You reason carefully about hidden elements, state manipulation, and privilege escalation vectors before recommending tests.`
@@ -130,18 +134,31 @@ func main() {
 		if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
 			for i, part := range resp.Candidates[0].Content.Parts {
 				pi := partInfo{
-					Index:   i,
-					Thought: part.Thought,
-					TextLen: len(part.Text),
-					Text:    part.Text,
+					Index: i,
 				}
-				result.Parts = append(result.Parts, pi)
 
 				if part.Thought {
+					pi.Type = "thought"
+					pi.Thought = true
+					pi.TextLen = len(part.Text)
+					pi.Text = part.Text
 					result.ThoughtSummary += part.Text
+				} else if part.FunctionCall != nil {
+					pi.Type = "function_call"
+					pi.ToolName = part.FunctionCall.Name
+					pi.ToolArgs = part.FunctionCall.Args
+				} else if part.FunctionResponse != nil {
+					pi.Type = "function_response"
+					pi.ToolName = part.FunctionResponse.Name
+					pi.ToolResponse = part.FunctionResponse.Response
 				} else if part.Text != "" {
+					pi.Type = "text"
+					pi.TextLen = len(part.Text)
+					pi.Text = part.Text
 					result.Answer += part.Text
 				}
+
+				result.Parts = append(result.Parts, pi)
 			}
 		}
 
@@ -158,7 +175,14 @@ func main() {
 		fmt.Printf("  Total tokens: %d\n", result.TotalTokens)
 		fmt.Printf("  Thought summary length: %d chars\n", len(result.ThoughtSummary))
 		fmt.Printf("  Answer length: %d chars\n", len(result.Answer))
-		fmt.Printf("  Parts: %d\n", len(result.Parts))
+		fmt.Printf("  Parts: %d (types: ", len(result.Parts))
+		for i, p := range result.Parts {
+			if i > 0 {
+				fmt.Print(", ")
+			}
+			fmt.Print(p.Type)
+		}
+		fmt.Println(")")
 		fmt.Printf("  Saved to: %s\n", outPath)
 	}
 
