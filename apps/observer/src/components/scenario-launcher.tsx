@@ -48,12 +48,18 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
 
   useEffect(() => {
     fetch(`${API_BASE}/api/agent/scenarios`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`scenarios fetch failed: ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         setScenarios(data.scenarios ?? {});
         if (data.runner_enabled === false) setRunnerEnabled(false);
       })
-      .catch(() => {});
+      .catch((err) => {
+        setRunnerEnabled(false);
+        setError(err instanceof Error ? err.message : "failed to load scenarios");
+      });
   }, []);
 
   const pollStatus = useCallback(() => {
