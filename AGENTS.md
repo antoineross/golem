@@ -28,6 +28,10 @@ Monorepo layout:
 - `apps/scraper/` -- Supacrawler perception layer (own go.mod)
   - Provides `/v1/scrape`, `/v1/screenshots` endpoints
   - LightPanda browser automation, Redis task queue
+- `apps/demo-target/` -- intentionally vulnerable Next.js 16 app for agent testing
+  - E-commerce demo with 8 planted security flaws (IDOR, privilege escalation, hidden elements, client-side logic bypass)
+  - Used as proof target for Gemini Live Agent Challenge submission
+  - Contains deliberate vulnerabilities -- do not apply security fixes
 
 Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusive. Because this agent uses tools, structured output must use the Regex Parser pattern.
 
