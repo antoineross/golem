@@ -16,11 +16,14 @@ import { useTraceList, useTrace, useTraceSSE } from "@/hooks/use-traces";
 import { useAgentStream } from "@/hooks/use-agent-stream";
 import type { TraceSummary, TimelineEvent } from "@/types/trace";
 import { EyeIcon, ArrowPathIcon, PlayIcon, SignalIcon } from "@heroicons/react/20/solid";
+import { ApiKeyInput, useApiKey, isApiKeyError } from "@/components/api-key-input";
 
 type MainView = "timeline" | "raw";
 
 export default function App() {
   const { files, loading: filesLoading, refresh: refreshFiles } = useTraceList();
+  const { apiKey, save: saveApiKey, clear: clearApiKey } = useApiKey();
+  const [agentError, setAgentError] = useState<string | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -90,6 +93,7 @@ export default function App() {
     setLiveRaw(null);
     setReplayMode(false);
     setMainView("timeline");
+    setAgentError(null);
     setTimeout(refreshFiles, 3000);
     setTimeout(refreshFiles, 10000);
   };
@@ -125,6 +129,7 @@ export default function App() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            <ApiKeyInput apiKey={apiKey} onSave={saveApiKey} onClear={clearApiKey} keyError={isApiKeyError(agentError) ? agentError : null} />
             <Tooltip>
               <TooltipTrigger render={<Button variant={replayMode ? "secondary" : "outline"} size="sm" onClick={() => { setReplayMode(!replayMode); setLiveEnabled(false); }} aria-label="Toggle replay mode" />}>
                 <PlayIcon className="h-3.5 w-3.5" />
@@ -152,7 +157,7 @@ export default function App() {
       <div className="flex flex-1 min-h-0">
         <aside className="w-[280px] shrink-0 border-r border-border bg-muted/50 flex flex-col">
           <div className="border-b border-border relative z-10 bg-muted/50">
-            <ScenarioLauncher onRunStarted={handleRunStarted} onRunComplete={refreshFiles} />
+            <ScenarioLauncher onRunStarted={handleRunStarted} onRunComplete={refreshFiles} apiKey={apiKey} onError={setAgentError} />
           </div>
 
           <div className="flex items-center justify-between px-3 pt-2 pb-1">

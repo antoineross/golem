@@ -36,9 +36,11 @@ interface Scenario {
 interface ScenarioLauncherProps {
   onRunStarted: (traceFile: string) => void;
   onRunComplete?: () => void;
+  apiKey?: string | null;
+  onError?: (error: string | null) => void;
 }
 
-export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLauncherProps) {
+export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError }: ScenarioLauncherProps) {
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Record<string, Scenario>>({});
@@ -75,6 +77,7 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
         setError(data.error);
         if (data.status !== "running") {
           clearInterval(interval);
+          onError?.(data.error ?? null);
           onRunComplete?.();
         }
       } catch {
@@ -82,14 +85,21 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [onRunComplete]);
+  }, [onRunComplete, onError]);
+
+  const handleRunError = (msg: string) => {
+    setError(msg);
+    onError?.(msg);
+  };
 
   const runScenario = async (scenarioKey: string) => {
     try {
+      const payload: Record<string, string> = { scenario: scenarioKey };
+      if (apiKey) payload.api_key = apiKey;
       const res = await fetch(`${API_BASE}/api/agent/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario: scenarioKey }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {
@@ -99,20 +109,22 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
         pollCleanupRef.current?.();
         pollCleanupRef.current = pollStatus();
       } else {
-        setError(data.error);
+        handleRunError(data.error);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to start agent");
+      handleRunError(err instanceof Error ? err.message : "failed to start agent");
     }
   };
 
   const runCustom = async () => {
     if (!customPrompt.trim()) return;
     try {
+      const payload: Record<string, string> = { scenario: "agent", prompt: customPrompt };
+      if (apiKey) payload.api_key = apiKey;
       const res = await fetch(`${API_BASE}/api/agent/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario: "agent", prompt: customPrompt }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {
@@ -122,10 +134,10 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
         pollCleanupRef.current?.();
         pollCleanupRef.current = pollStatus();
       } else {
-        setError(data.error);
+        handleRunError(data.error);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to start agent");
+      handleRunError(err instanceof Error ? err.message : "failed to start agent");
     }
   };
 

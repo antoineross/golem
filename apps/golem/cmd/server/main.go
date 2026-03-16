@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -46,6 +48,7 @@ type runRequest struct {
 	Prompt    string `json:"prompt"`
 	Harness   string `json:"harness"`
 	TraceFile string `json:"trace_file"`
+	APIKey    string `json:"api_key,omitempty"`
 }
 
 func main() {
@@ -105,7 +108,15 @@ func main() {
 		state.set("running", traceFile, "")
 
 		go func() {
-			slog.Info("starting agent run", "prompt", req.Prompt, "trace_file", traceFile, "harness", harness)
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("agent goroutine panicked", "panic", r)
+					state.set("error", "", fmt.Sprintf("internal panic: %v", r))
+				}
+			}()
+
+			hasCustomKey := req.APIKey != ""
+			slog.Info("starting agent run", "prompt", req.Prompt, "trace_file", traceFile, "harness", harness, "custom_key", hasCustomKey)
 
 			cmd := exec.Command("/app/tmp/golem", req.Prompt)
 			cmd.Dir = "/app"
@@ -113,12 +124,18 @@ func main() {
 				"GOLEM_TRACE_FILE="+traceFile,
 				"GOLEM_TRACE_CAPTURE_CONTENT=true",
 			)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
+			if req.APIKey != "" {
+				cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
+			}
+
+			var outputBuf cappedBuffer
+			cmd.Stdout = io.MultiWriter(os.Stdout, &outputBuf)
+			cmd.Stderr = io.MultiWriter(os.Stderr, &outputBuf)
 
 			if err := cmd.Run(); err != nil {
-				slog.Error("agent run failed", "error", err)
-				state.set("error", "", err.Error())
+				errMsg := extractAgentError(outputBuf.String(), err)
+				slog.Error("agent run failed", "error", errMsg)
+				state.set("error", "", errMsg)
 				return
 			}
 
@@ -144,6 +161,52 @@ func main() {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+const maxOutputCapture = 64 * 1024 // 64KB
+
+type cappedBuffer struct {
+	buf bytes.Buffer
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	remaining := maxOutputCapture - c.buf.Len()
+	if remaining <= 0 {
+		return len(p), nil
+	}
+	if len(p) > remaining {
+		p = p[:remaining]
+	}
+	return c.buf.Write(p)
+}
+
+func (c *cappedBuffer) String() string {
+	return c.buf.String()
+}
+
+func extractAgentError(output string, exitErr error) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var entry struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+			Error string `json:"error"`
+		}
+		if json.Unmarshal([]byte(line), &entry) == nil && entry.Level == "ERROR" && entry.Error != "" {
+			return entry.Error
+		}
+	}
+	tail := output
+	if len(tail) > 500 {
+		tail = tail[len(tail)-500:]
+	}
+	if tail != "" {
+		return fmt.Sprintf("%s: %s", exitErr, tail)
+	}
+	return exitErr.Error()
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

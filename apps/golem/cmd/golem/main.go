@@ -119,10 +119,12 @@ func main() {
 		ResponseText: prompt,
 	})
 
+	var runErr error
 	for event, err := range r.Run(ctx, resp.Session.UserID(), resp.Session.ID(), msg, agent.RunConfig{}) {
 		if err != nil {
 			slog.Error("agent error", "error", err)
 			tw.Write(golemAdk.TraceEvent{Type: "error", ResponseText: err.Error()})
+			runErr = err
 			break
 		}
 
@@ -185,6 +187,12 @@ func main() {
 				})
 			}
 		}
+	}
+
+	if runErr != nil {
+		slog.Info("agent run failed")
+		tw.Write(golemAdk.TraceEvent{Type: "run_failed", ResponseText: runErr.Error()})
+		os.Exit(1)
 	}
 
 	slog.Info("agent run complete")
