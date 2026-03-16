@@ -6,6 +6,44 @@ An autonomous security agent for the [Google Gemini Live Agent Challenge (2026)]
 
 Competition category: **UI Navigator**.
 
+## Architecture
+
+```mermaid
+graph TB
+    subgraph "Google Cloud (GCE VM)"
+        subgraph "Docker Compose"
+            Observer["Observer UI<br/>Vite + React + Hono<br/>:3000"]
+            Golem["Golem Agent<br/>Go + ADK v0.6.0<br/>:8080"]
+            Scraper["Supacrawl Scraper<br/>LightPanda Browser<br/>:8081"]
+            Redis["Redis 7<br/>Task Queue<br/>:6379"]
+        end
+    end
+
+    subgraph "Google AI"
+        Gemini["Gemini 3 Flash<br/>Multimodal LLM<br/>(AI Studio API)"]
+    end
+
+    subgraph "Target Web App"
+        Target["Demo Target<br/>Next.js 16<br/>:4000"]
+    end
+
+    User((User)) -->|"Launch scenario"| Observer
+    Observer -->|"SSE trace stream"| User
+    Observer -->|"Read traces"| Golem
+
+    Golem <-->|"Reasoning loop<br/>+ Tool schemas"| Gemini
+    Golem -->|"Scrape / Screenshot"| Scraper
+    Scraper -->|"Browser automation"| Target
+    Scraper -->|"Job queue"| Redis
+
+    style Gemini fill:#4285F4,color:#fff
+    style Golem fill:#34A853,color:#fff
+    style Observer fill:#FBBC04,color:#000
+    style Scraper fill:#EA4335,color:#fff
+```
+
+See `ARCHITECTURE.md` for detailed sequence diagrams and tool architecture.
+
 ## What it does
 
 Traditional security scanners (DAST/SAST) find broken code (SQLi, XSS). G.O.L.E.M. finds **broken logic**: price manipulation, hidden privilege escalation, IDOR via visual state mapping, and more.

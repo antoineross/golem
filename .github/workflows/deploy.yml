@@ -9,22 +9,17 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-  GCP_REPOSITORY: ${{ secrets.GCP_REPOSITORY }}
-
 jobs:
   detect-changes:
     name: Detect changes
     runs-on: ubuntu-latest
     outputs:
       git_sha_short: ${{ steps.vars.outputs.sha }}
-      golem_changed: ${{ steps.filter.outputs.golem }}
-      observer_changed: ${{ steps.filter.outputs.observer }}
-      scraper_changed: ${{ steps.filter.outputs.scraper }}
-      demo_target_changed: ${{ steps.filter.outputs.demo_target }}
-      any_changed: ${{ steps.filter.outputs.golem == 'true' || steps.filter.outputs.observer == 'true' || steps.filter.outputs.scraper == 'true' || steps.filter.outputs.demo_target == 'true' || steps.filter.outputs.config == 'true' }}
+      golem_changed: ${{ steps.changes.outputs.golem }}
+      observer_changed: ${{ steps.changes.outputs.observer }}
+      scraper_changed: ${{ steps.changes.outputs.scraper }}
+      demo_target_changed: ${{ steps.changes.outputs.demo_target }}
+      any_changed: ${{ steps.changes.outputs.any }}
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +28,7 @@ jobs:
 
       - uses: dorny/paths-filter@v3
         id: filter
+        if: github.event_name == 'push'
         with:
           filters: |
             golem:
@@ -47,6 +43,31 @@ jobs:
               - 'docker-compose.yml'
               - 'docker-compose.prod.yml'
               - '.github/workflows/deploy.yml'
+
+      - name: Resolve change flags
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "golem=true" >> "$GITHUB_OUTPUT"
+            echo "observer=true" >> "$GITHUB_OUTPUT"
+            echo "scraper=true" >> "$GITHUB_OUTPUT"
+            echo "demo_target=true" >> "$GITHUB_OUTPUT"
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "golem=${{ steps.filter.outputs.golem }}" >> "$GITHUB_OUTPUT"
+            echo "observer=${{ steps.filter.outputs.observer }}" >> "$GITHUB_OUTPUT"
+            echo "scraper=${{ steps.filter.outputs.scraper }}" >> "$GITHUB_OUTPUT"
+            echo "demo_target=${{ steps.filter.outputs.demo_target }}" >> "$GITHUB_OUTPUT"
+            ANY="false"
+            if [ "${{ steps.filter.outputs.golem }}" = "true" ] || \
+               [ "${{ steps.filter.outputs.observer }}" = "true" ] || \
+               [ "${{ steps.filter.outputs.scraper }}" = "true" ] || \
+               [ "${{ steps.filter.outputs.demo_target }}" = "true" ] || \
+               [ "${{ steps.filter.outputs.config }}" = "true" ]; then
+              ANY="true"
+            fi
+            echo "any=${ANY}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set vars
         id: vars
@@ -183,7 +204,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           script: |
-            cat > ~/golem/.env.prod << 'ENVEOF'
+            cat > ~/golem/.env.prod <<'ENVEOF'
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
             DEFAULT_LLM_MODEL=gemini-3-flash-preview
             GOLEM_LOG_LEVEL=info
@@ -233,7 +254,7 @@ jobs:
             export SCRAPER_IMAGE="${REGISTRY_URL}/golem-scraper:$(resolve_tag scraper "$SCRAPER_CHANGED")"
             export DEMO_TARGET_IMAGE="${REGISTRY_URL}/golem-demo-target:$(resolve_tag demo-target "$DEMO_TARGET_CHANGED")"
 
-            echo "Images: golem=${GOLEM_IMAGE} observer=${OBSERVER_IMAGE}"
+            echo "Images: golem=${GOLEM_IMAGE} observer=${OBSERVER_IMAGE} scraper=${SCRAPER_IMAGE} demo-target=${DEMO_TARGET_IMAGE}"
 
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull
             docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --remove-orphans

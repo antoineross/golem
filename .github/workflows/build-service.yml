@@ -27,8 +27,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      REGISTRY_URL: "${{ secrets.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}"
+      packages: write
 
     steps:
       - name: Checkout code
@@ -51,6 +50,8 @@ jobs:
 
       - name: Build and Push
         uses: docker/build-push-action@v5
+        env:
+          REGISTRY_URL: "${{ secrets.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}"
         with:
           context: ${{ inputs.service_path }}
           platforms: linux/amd64

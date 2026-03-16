@@ -18,6 +18,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: actionlint
+        name: actionlint workflow validation
+        language: system
+        entry: bash -c 'if ! command -v actionlint >/dev/null 2>&1; then echo "actionlint not installed; skipping workflow checks"; exit 0; fi; actionlint -ignore "SC[0-9]+"'
+        pass_filenames: false
+        files: '^\.github/workflows/'
+
       - id: verify-claude-symlink
         name: verify CLAUDE.md symlink
         language: system
