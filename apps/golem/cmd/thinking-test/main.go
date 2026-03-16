@@ -80,10 +80,10 @@ func main() {
 
 	configs := []struct {
 		name  string
-		level string
+		level genai.ThinkingLevel
 	}{
-		{name: "medium", level: "MEDIUM"},
-		{name: "low", level: "LOW"},
+		{name: "medium", level: genai.ThinkingLevelMedium},
+		{name: "low", level: genai.ThinkingLevelLow},
 	}
 
 	ctx := context.Background()
@@ -102,7 +102,7 @@ func main() {
 			SystemInstruction: genai.NewContentFromText(systemInstruction, "user"),
 			ThinkingConfig: &genai.ThinkingConfig{
 				IncludeThoughts: true,
-				ThinkingLevel:   genai.ThinkingLevel(tc.level),
+				ThinkingLevel:   tc.level,
 			},
 		}
 
@@ -118,7 +118,7 @@ func main() {
 		result := traceResult{
 			TestName:          tc.name,
 			Model:             model,
-			ThinkingLevel:     tc.level,
+			ThinkingLevel:     string(tc.level),
 			SystemInstruction: systemInstruction,
 			UserPrompt:        userPrompt,
 			ElapsedMs:         elapsed.Milliseconds(),
@@ -162,7 +162,11 @@ func main() {
 			}
 		}
 
-		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+		jsonBytes, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			log.Printf("[%s] failed to marshal trace result: %v", tc.name, err)
+			continue
+		}
 		outPath := filepath.Join(outDir, fmt.Sprintf("%s_trace.json", tc.name))
 		if err := os.WriteFile(outPath, jsonBytes, 0644); err != nil {
 			log.Printf("[%s] write error: %v", tc.name, err)

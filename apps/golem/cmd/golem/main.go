@@ -126,10 +126,11 @@ func main() {
 				)
 			}
 			if part.Thought && part.Text != "" {
-				slog.Info("model thought",
+				slog.Debug("model thought detail",
 					"text_len", len(part.Text),
-					"text", truncate(part.Text, 500),
+					"text", truncateRunes(part.Text, 500),
 				)
+				slog.Info("model thought received", "text_len", len(part.Text))
 				continue
 			}
 			if part.Text != "" {
@@ -190,9 +191,10 @@ func buildTools(ctx context.Context) ([]tool.Tool, bool, error) {
 	return tools, true, nil
 }
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+func truncateRunes(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxRunes]) + "..."
 }
