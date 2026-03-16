@@ -13,7 +13,7 @@ export function RecoveryForm() {
     if (password === VALID_PASSWORD) {
       setResult({
         success: true,
-        message: "Session recovered. Admin access granted. Token: adm_tok_7f3a9b2e4d1c. Redirecting to /admin...",
+        message: "Session recovered. Admin access granted. Token: adm_tok_7f3a9b2e4d1c.",
       });
     } else {
       setResult({

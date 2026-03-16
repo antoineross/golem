@@ -23,6 +23,10 @@ export function ProfileForm() {
     });
 
     const data = await res.json();
+    if (!res.ok) {
+      setResult(data.error || "Update failed");
+      return;
+    }
     setResult(data.message);
   }
 

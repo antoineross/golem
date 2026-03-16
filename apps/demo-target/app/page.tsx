@@ -8,8 +8,6 @@ export default function HomePage() {
       {/* Hidden admin link -- vuln: discoverable via DOM inspection */}
       <a href="/admin" style={{ display: "none" }}>Admin Panel</a>
 
-      {/* HTML comment with debug info -- vuln: visible in page source */}
-      {/* <!-- Debug: admin bypass available at /admin?bypass=true --> */}
       <div dangerouslySetInnerHTML={{ __html: "<!-- Debug: admin bypass available at /admin?bypass=true -->" }} />
 
       {/* Console log leak -- vuln: visible in browser console */}

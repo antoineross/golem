@@ -46,6 +46,10 @@ export function ShopClient({ products }: { products: Product[] }) {
     });
 
     const data = await res.json();
+    if (!res.ok) {
+      setCheckoutResult(data.error || "Checkout failed");
+      return;
+    }
     setCheckoutResult(data.message);
     if (data.orderId) {
       setCart([]);
