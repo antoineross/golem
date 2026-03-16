@@ -44,7 +44,7 @@ export function ModelSelector({ model, onSelect, disabled }: ModelSelectorProps)
   const label = selected?.label ?? model;
 
   return (
-    <Select value={model} onValueChange={onSelect} disabled={disabled}>
+    <Select value={model} onValueChange={(val) => { if (val) onSelect(val); }} disabled={disabled}>
       <SelectTrigger size="sm" className="text-xs h-7 gap-1 min-w-[120px]" title="Select Gemini model for agent runs">
         <SelectValue>{label}</SelectValue>
       </SelectTrigger>
