@@ -1,6 +1,8 @@
 package scrape
 
 import (
+	"compress/flate"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -22,6 +24,7 @@ import (
 	"scraper/internal/utils/markdown"
 
 	html2markdown "github.com/JohannesKaufmann/html-to-markdown"
+	"github.com/andybalholm/brotli"
 	"github.com/chromedp/chromedp"
 	utls "github.com/refraction-networking/utls"
 )
@@ -297,7 +300,12 @@ func (s *Service) scrapeWithClient(params engineapi.GetV1ScrapeParams, strategy 
 		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
 
-	htmlBytes, err := io.ReadAll(resp.Body)
+	body, err := decompressBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("decompress: %w", err)
+	}
+
+	htmlBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err
 	}
@@ -533,6 +541,31 @@ func getRandomTLSDialer() func(ctx context.Context, network, addr string) (net.C
 		}
 
 		return utlsConn, nil
+	}
+}
+
+// decompressBody wraps the response body with the appropriate decompressor
+// based on the Content-Encoding header. This is necessary because Go's
+// http.Client only auto-decompresses when Accept-Encoding is NOT manually set,
+// and the scraper sets it explicitly to support br/zstd.
+func decompressBody(resp *http.Response) (io.Reader, error) {
+	encoding := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	switch encoding {
+	case "gzip":
+		return gzip.NewReader(resp.Body)
+	case "deflate":
+		return flate.NewReader(resp.Body), nil
+	case "br":
+		return brotli.NewReader(resp.Body), nil
+	case "zstd":
+		// zstd requires a third-party decoder not currently imported.
+		// Fall through to raw read; the server rarely picks zstd when
+		// gzip/br are also offered.
+		return resp.Body, nil
+	case "", "identity":
+		return resp.Body, nil
+	default:
+		return resp.Body, nil
 	}
 }
 
