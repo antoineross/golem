@@ -37,9 +37,10 @@ interface ScenarioLauncherProps {
   onRunStarted: (traceFile: string) => void;
   onRunComplete?: () => void;
   apiKey?: string | null;
+  onError?: (error: string | null) => void;
 }
 
-export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey }: ScenarioLauncherProps) {
+export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError }: ScenarioLauncherProps) {
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Record<string, Scenario>>({});
@@ -76,6 +77,7 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey }: Scenar
         setError(data.error);
         if (data.status !== "running") {
           clearInterval(interval);
+          onError?.(data.error ?? null);
           onRunComplete?.();
         }
       } catch {
@@ -83,7 +85,7 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey }: Scenar
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [onRunComplete]);
+  }, [onRunComplete, onError]);
 
   const runScenario = async (scenarioKey: string) => {
     try {

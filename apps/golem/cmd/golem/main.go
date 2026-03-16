@@ -119,10 +119,12 @@ func main() {
 		ResponseText: prompt,
 	})
 
+	var runErr error
 	for event, err := range r.Run(ctx, resp.Session.UserID(), resp.Session.ID(), msg, agent.RunConfig{}) {
 		if err != nil {
 			slog.Error("agent error", "error", err)
 			tw.Write(golemAdk.TraceEvent{Type: "error", ResponseText: err.Error()})
+			runErr = err
 			break
 		}
 
@@ -189,6 +191,10 @@ func main() {
 
 	slog.Info("agent run complete")
 	tw.Write(golemAdk.TraceEvent{Type: "run_complete"})
+
+	if runErr != nil {
+		os.Exit(1)
+	}
 }
 
 func defaultPrompt(hasBrowse bool) string {

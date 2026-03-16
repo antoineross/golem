@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -118,12 +120,15 @@ func main() {
 			if req.APIKey != "" {
 				cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
 			}
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
+
+			var outputBuf bytes.Buffer
+			cmd.Stdout = io.MultiWriter(os.Stdout, &outputBuf)
+			cmd.Stderr = io.MultiWriter(os.Stderr, &outputBuf)
 
 			if err := cmd.Run(); err != nil {
-				slog.Error("agent run failed", "error", err)
-				state.set("error", "", err.Error())
+				errMsg := extractAgentError(outputBuf.String(), err)
+				slog.Error("agent run failed", "error", errMsg)
+				state.set("error", "", errMsg)
 				return
 			}
 
@@ -149,6 +154,31 @@ func main() {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+func extractAgentError(stderr string, exitErr error) string {
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var entry struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+			Error string `json:"error"`
+		}
+		if json.Unmarshal([]byte(line), &entry) == nil && entry.Level == "ERROR" && entry.Error != "" {
+			return entry.Error
+		}
+	}
+	tail := stderr
+	if len(tail) > 500 {
+		tail = tail[len(tail)-500:]
+	}
+	if tail != "" {
+		return fmt.Sprintf("%s: %s", exitErr, tail)
+	}
+	return exitErr.Error()
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
