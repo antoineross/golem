@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { useState } from "react";
 import {
   Select,
   SelectContent,
@@ -25,8 +24,10 @@ export function useModel() {
   );
 
   const save = (value: string) => {
-    localStorage.setItem(STORAGE_KEY, value);
-    setModel(value);
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    localStorage.setItem(STORAGE_KEY, trimmed);
+    setModel(trimmed);
   };
 
   return { model, save };
@@ -39,41 +40,21 @@ interface ModelSelectorProps {
 }
 
 export function ModelSelector({ model, onSelect, disabled }: ModelSelectorProps) {
-  const [value, setValue] = useState(model);
-
-  useEffect(() => { setValue(model); }, [model]);
-
-  const selected = MODELS.find((m) => m.value === value);
-  const label = selected?.label ?? value;
+  const selected = MODELS.find((m) => m.value === model);
+  const label = selected?.label ?? model;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <div className="inline-flex">
-            <Select
-              value={value}
-              onValueChange={(val: string) => {
-                setValue(val);
-                onSelect(val);
-              }}
-              disabled={disabled}
-            >
-              <SelectTrigger size="sm" className="text-xs h-7 gap-1 min-w-[120px]">
-                <SelectValue>{label}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {MODELS.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>
-                    <span className="text-xs">{m.label}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        }
-      />
-      <TooltipContent>Select Gemini model for agent runs</TooltipContent>
-    </Tooltip>
+    <Select value={model} onValueChange={onSelect} disabled={disabled}>
+      <SelectTrigger size="sm" className="text-xs h-7 gap-1 min-w-[120px]" title="Select Gemini model for agent runs">
+        <SelectValue>{label}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {MODELS.map((m) => (
+          <SelectItem key={m.value} value={m.value}>
+            <span className="text-xs">{m.label}</span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

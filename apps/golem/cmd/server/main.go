@@ -169,8 +169,8 @@ func main() {
 		if req.APIKey != "" {
 			cmd.Env = append(cmd.Env, "GOOGLE_API_KEY="+req.APIKey)
 		}
-		if req.Model != "" {
-			cmd.Env = append(cmd.Env, "DEFAULT_LLM_MODEL="+req.Model)
+		if m := strings.TrimSpace(req.Model); m != "" {
+			cmd.Env = append(cmd.Env, "DEFAULT_LLM_MODEL="+m)
 		}
 
 		// Atomic check-and-set to prevent concurrent runs

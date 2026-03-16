@@ -270,7 +270,8 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
     const scenario = typeof body?.scenario === "string" ? body.scenario : "level0";
     const customPrompt = typeof body?.prompt === "string" ? body.prompt : undefined;
     const userApiKey = typeof body?.api_key === "string" ? body.api_key : undefined;
-    const userModel = typeof body?.model === "string" ? body.model : undefined;
+    const rawModel = typeof body?.model === "string" ? body.model.trim() : "";
+    const userModel = rawModel.length > 0 && rawModel.length <= 100 ? rawModel : undefined;
 
     const scenarioConfig = SCENARIOS[scenario];
     if (!scenarioConfig && !customPrompt) {
