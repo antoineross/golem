@@ -192,6 +192,27 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
     });
   });
 
+  app.post("/api/agent/stop", async (c) => {
+    if (useGolemApi) {
+      try {
+        const resp = await fetch(`${config.golemApiUrl}/api/stop`, { method: "POST" });
+        if (resp.ok) {
+          setAgentState({ status: "idle", error: "agent stopped by user" });
+          return c.json({ status: "stopped" });
+        }
+        const body = await resp.text();
+        return c.json({ error: body }, resp.status as 409);
+      } catch (e) {
+        return c.json({ error: `golem API unreachable: ${e}` }, 502);
+      }
+    }
+    if (getAgentState().status === "running") {
+      setAgentState({ status: "idle", error: "agent stopped by user" });
+      return c.json({ status: "stopped" });
+    }
+    return c.json({ error: "no agent running" }, 409);
+  });
+
   app.get("/api/agent/scenarios", (c) => {
     return c.json({ scenarios: SCENARIOS });
   });

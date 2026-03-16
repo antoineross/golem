@@ -217,7 +217,7 @@ export function reduceStreamEvent(
                 ...tc,
                 state: "output-available" as ToolState,
                 response: event.tool_response,
-                screenshotUrl: event.screenshot_url,
+                screenshotUrl: rewriteScreenshotUrl(event.screenshot_url),
                 screenshotPending: false,
               }
             : tc
@@ -253,4 +253,13 @@ export function reduceStreamEvent(
   }
 
   return next;
+}
+
+function rewriteScreenshotUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  const match = url.match(/\/files\/screenshots\/(.+)$/);
+  if (match) {
+    return `/files/screenshots/${match[1]}`;
+  }
+  return url;
 }

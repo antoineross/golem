@@ -190,10 +190,10 @@ function StaticToolCallStep({ event }: { event: TimelineEvent }) {
         </ToolContent>
       </Tool>
 
-      {event.screenshot_url && /^https?:\/\//i.test(event.screenshot_url) && (
+      {event.screenshot_url && (
         <ChainOfThoughtImage caption={`Screenshot from ${toolName}`}>
           <img
-            src={event.screenshot_url}
+            src={rewriteScreenshotUrl(event.screenshot_url)}
             alt={`Screenshot from ${toolName}`}
             className="max-w-full max-h-96 object-contain rounded"
           />
@@ -201,6 +201,12 @@ function StaticToolCallStep({ event }: { event: TimelineEvent }) {
       )}
     </ChainOfThoughtStep>
   );
+}
+
+function rewriteScreenshotUrl(url: string): string {
+  const match = url.match(/\/files\/screenshots\/(.+)$/);
+  if (match) return `/files/screenshots/${match[1]}`;
+  return url;
 }
 
 function formatDuration(ms: number): string {

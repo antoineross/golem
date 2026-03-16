@@ -92,6 +92,21 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError 
     onError?.(msg);
   };
 
+  const stopAgent = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/agent/stop`, { method: "POST" });
+      if (res.ok) {
+        setStatus("idle");
+        setError(null);
+        pollCleanupRef.current?.();
+        pollCleanupRef.current = null;
+        onRunComplete?.();
+      }
+    } catch (err) {
+      handleRunError(err instanceof Error ? err.message : "failed to stop agent");
+    }
+  };
+
   const runScenario = async (scenarioKey: string) => {
     try {
       const payload: Record<string, string> = { scenario: scenarioKey };
@@ -172,18 +187,31 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete, apiKey, onError 
             vulnerability type at increasing difficulty.
           </TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger render={<Badge variant={statusVariant[status]} className="text-[10px] gap-1 cursor-help" />}>
-            {statusIcon[status]}
-            <span className="capitalize">{status}</span>
-          </TooltipTrigger>
-          <TooltipContent className="text-xs">
-            {status === "idle" && "No agent running. Select a scenario to start."}
-            {status === "running" && "Agent is executing. Events stream in real-time."}
-            {status === "complete" && "Agent finished. Select the trace to review results."}
-            {status === "error" && (error ?? "Agent encountered an error.")}
-          </TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-1.5">
+          {status === "running" && (
+            <Button
+              variant="destructive"
+              size="xs"
+              onClick={stopAgent}
+              className="h-5 px-2 text-[10px]"
+            >
+              <StopIcon className="h-3 w-3 mr-0.5" />
+              Stop
+            </Button>
+          )}
+          <Tooltip>
+            <TooltipTrigger render={<Badge variant={statusVariant[status]} className="text-[10px] gap-1 cursor-help" />}>
+              {statusIcon[status]}
+              <span className="capitalize">{status}</span>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs">
+              {status === "idle" && "No agent running. Select a scenario to start."}
+              {status === "running" && "Agent is executing. Click Stop to cancel."}
+              {status === "complete" && "Agent finished. Select the trace to review results."}
+              {status === "error" && (error ?? "Agent encountered an error.")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       <div className="px-2 pb-1">

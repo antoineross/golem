@@ -24,6 +24,7 @@ services:
       - APP_ENV=development
       - LIGHTPANDA_CDP_URL=ws://localhost:9222
       - GEMINI_API_KEY=${SCRAPER_GEMINI_API_KEY:-${GOOGLE_API_KEY:-}}
+      - DATA_DIR=/data
     env_file:
       - path: ./apps/scraper/.env.example
         required: true
@@ -34,6 +35,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - scraper-data:/data
     restart: unless-stopped
 
   demo-target:
@@ -94,3 +97,4 @@ services:
 volumes:
   redis-data:
   golem-go-cache:
+  scraper-data:

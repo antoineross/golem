@@ -57,8 +57,8 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
   });
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col flex-1 min-h-0 gap-3">
+      <div className="flex items-center gap-2 shrink-0">
         <div className="flex-1">
           <StreamStatusBanner state={state} />
         </div>
@@ -73,7 +73,7 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
         </Button>
       </div>
 
-      <Conversation className="h-[calc(100vh-320px)]">
+      <Conversation className="flex-1 min-h-0">
         <ConversationContent>
           {state.userPrompt && (
             <Message from="user">
