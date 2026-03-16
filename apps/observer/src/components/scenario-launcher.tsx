@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +44,11 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
   const [scenarios, setScenarios] = useState<Record<string, Scenario>>({});
   const [customPrompt, setCustomPrompt] = useState("");
   const [runnerEnabled, setRunnerEnabled] = useState(true);
+  const pollCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => { pollCleanupRef.current?.(); };
+  }, []);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/agent/scenarios`)
@@ -92,7 +96,8 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
         setStatus("running");
         setError(null);
         onRunStarted(data.trace_file);
-        pollStatus();
+        pollCleanupRef.current?.();
+        pollCleanupRef.current = pollStatus();
       } else {
         setError(data.error);
       }
@@ -114,7 +119,8 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
         setStatus("running");
         setError(null);
         onRunStarted(data.trace_file);
-        pollStatus();
+        pollCleanupRef.current?.();
+        pollCleanupRef.current = pollStatus();
       } else {
         setError(data.error);
       }
@@ -143,31 +149,55 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
   };
 
   return (
-    <Card>
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-xs font-medium">Scenarios</CardTitle>
-          <Badge variant={statusVariant[status]} className="text-[10px] gap-1">
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between px-3 pt-2 pb-1">
+        <Tooltip>
+          <TooltipTrigger render={<span className="text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-help" />}>
+            Scenarios
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-[220px] text-xs">
+            Pre-built test harnesses for the G.O.L.E.M. agent. Each scenario targets a different
+            vulnerability type at increasing difficulty.
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger render={<Badge variant={statusVariant[status]} className="text-[10px] gap-1 cursor-help" />}>
             {statusIcon[status]}
             <span className="capitalize">{status}</span>
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 space-y-2">
-        <Accordion className="space-y-1">
+          </TooltipTrigger>
+          <TooltipContent className="text-xs">
+            {status === "idle" && "No agent running. Select a scenario to start."}
+            {status === "running" && "Agent is executing. Events stream in real-time."}
+            {status === "complete" && "Agent finished. Select the trace to review results."}
+            {status === "error" && (error ?? "Agent encountered an error.")}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+
+      <div className="px-2 pb-1">
+        <Accordion className="space-y-0.5">
           {Object.entries(scenarios).map(([key, scenario]) => (
             <AccordionItem key={key} value={key} className="border-0">
               <div className="rounded-md border border-border overflow-hidden">
-                <AccordionTrigger className="px-2.5 py-1.5 hover:no-underline text-xs">
-                  <span className="truncate">{scenario.name}</span>
-                </AccordionTrigger>
-                <AccordionContent className="px-2.5 pb-2.5">
-                  <div className="space-y-2">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <AccordionTrigger className="px-2.5 py-1 hover:no-underline text-xs" />
+                    }
+                  >
+                    <span className="truncate">{scenario.name}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[220px] text-xs">
+                    {scenario.description}
+                  </TooltipContent>
+                </Tooltip>
+                <AccordionContent className="px-2.5 pb-2">
+                  <div className="space-y-1.5">
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
                       {scenario.description}
                     </p>
-                    <div className="rounded bg-muted p-2">
-                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-1">
+                    <div className="rounded bg-muted p-1.5">
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
                         Prompt
                       </div>
                       <p className="text-[11px] font-mono text-foreground">
@@ -176,19 +206,13 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {scenario.tools?.map((t) => (
-                        <Badge
-                          key={t}
-                          variant="outline"
-                          className="text-[9px] px-1 py-0 h-3.5"
-                        >
+                        <Badge key={t} variant="outline" className="text-[9px] px-1 py-0 h-3.5">
                           {t}
                         </Badge>
                       ))}
                     </div>
                     {scenario.requires_scraper && (
-                      <p className="text-[10px] text-amber-400">
-                        Requires scraper service
-                      </p>
+                      <p className="text-[10px] text-amber-400">Requires scraper service</p>
                     )}
                     <Tooltip>
                       <TooltipTrigger
@@ -217,38 +241,39 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
             </AccordionItem>
           ))}
         </Accordion>
+      </div>
 
-        <div className="flex gap-1.5">
-          <Input
-            placeholder="Custom prompt..."
-            value={customPrompt}
-            onChange={(e) => setCustomPrompt(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && runCustom()}
-            disabled={status === "running" || !runnerEnabled}
-            className="text-xs h-7"
-          />
-          <Button
-            variant="outline"
-            size="xs"
-            disabled={status === "running" || !customPrompt.trim() || !runnerEnabled}
-            onClick={runCustom}
-          >
-            Run
-          </Button>
+      <div className="flex gap-1.5 px-2 py-1.5">
+        <Input
+          placeholder="Custom prompt..."
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && runCustom()}
+          disabled={status === "running" || !runnerEnabled}
+          className="text-xs h-7"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={status === "running" || !customPrompt.trim() || !runnerEnabled}
+          onClick={runCustom}
+          className="h-7 px-3 shrink-0"
+        >
+          Run
+        </Button>
+      </div>
+
+      {!runnerEnabled && (
+        <div className="mx-2 mb-1.5 text-[10px] text-muted-foreground bg-muted border border-border rounded p-1.5">
+          Runner disabled in this environment. Use <code className="font-mono">./golem e2e &lt;level&gt;</code> from the host CLI. Traces appear here automatically.
         </div>
+      )}
 
-        {!runnerEnabled && (
-          <div className="text-[10px] text-muted-foreground bg-muted border border-border rounded p-1.5">
-            Runner disabled in this environment. Use <code className="font-mono">./golem e2e &lt;level&gt;</code> from the host CLI. Traces appear here automatically.
-          </div>
-        )}
-
-        {error && (
-          <div className="text-[10px] text-destructive bg-destructive/10 border border-destructive/20 rounded p-1.5">
-            {error}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {error && (
+        <div className="mx-2 mb-1.5 text-[10px] text-destructive bg-destructive/10 border border-destructive/20 rounded p-1.5">
+          {error}
+        </div>
+      )}
+    </div>
   );
 }

@@ -10,7 +10,7 @@ NC='\033[0m'
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 PROJECT_NAME="${PROJECT_NAME:-golem}"
-LOG_DIR="${REPO_ROOT}/tmp/logs"
+export LOG_DIR="${REPO_ROOT}/tmp/logs"
 
 # =============================================================================
 # Helper Functions
@@ -79,12 +79,12 @@ apply_env_file() {
         raw="$(trim_whitespace "${raw%%#*}")"
       fi
       printf -v "${key}" '%s' "${raw}"
-      export "${key}"
+      export "${key?}"
     fi
   done < "${env_path}"
 }
 
-ENV_FILE=""
+export ENV_FILE=""
 ENV_SOURCES=()
 ENV_SOURCES_DISPLAY=""
 ENV_LOADED=""
@@ -231,6 +231,40 @@ Examples:
 EOF
 }
 
+check_port_conflicts() {
+  local ports=("3000" "${SCRAPER_PORT:-8083}" "${GOLEM_PORT:-8081}" "${REDIS_PORT:-6380}")
+  local conflict=0
+
+  for port in "${ports[@]}"; do
+    # Only check for LISTEN sockets (not FIN_WAIT, CLOSE_WAIT, etc.)
+    local listeners
+    listeners=$(lsof -i :"${port}" -P -n -sTCP:LISTEN 2>/dev/null | tail -n +2 || true)
+    if [[ -z "${listeners}" ]]; then
+      continue
+    fi
+
+    local pid
+    pid=$(echo "${listeners}" | awk '{print $2}' | head -1 || true)
+    local pname
+    pname=$(ps -p "${pid}" -o comm= 2>/dev/null || echo "unknown")
+
+    # Allow Docker-related processes
+    if [[ "${pname}" == *"docker"* || "${pname}" == *"com.docker"* || "${pname}" == *"OrbStack"* || "${pname}" == *"vpnkit"* || "${pname}" == *"containerd"* ]]; then
+      continue
+    fi
+
+    log_err "port ${port} is occupied by ${pname} (pid ${pid})"
+    log_err "  kill it with: kill ${pid}"
+    conflict=1
+  done
+
+  if [[ ${conflict} -eq 1 ]]; then
+    log_err "stale processes detected on required ports. clean them up before starting."
+    log_err "this commonly happens when bun/node was run directly instead of via Docker."
+    exit 1
+  fi
+}
+
 cmd_start() {
   check_docker
   check_env
@@ -250,8 +284,11 @@ cmd_start() {
     esac
   done
 
+  check_port_conflicts
+
   log_info "starting golem services..."
 
+  # shellcheck disable=SC2086
   dc_env up ${build_flag} -d ${services}
   log_ok "services started"
 
@@ -284,6 +321,7 @@ cmd_start() {
 
   if [[ "${tail}" == "yes" ]]; then
     log_info "tailing logs (Ctrl+C to stop, services keep running)..."
+    # shellcheck disable=SC2086
     dc_env logs -f ${services}
   fi
 }
@@ -332,7 +370,15 @@ cmd_status() {
   fi
 
   local scraper_port="${SCRAPER_PORT:-8083}"
-  if curl -sf "http://localhost:${scraper_port}/v1/health" >/dev/null 2>&1; then
+  local scraper_ok=0
+  for _retry in 1 2 3 4 5; do
+    if curl -sf --max-time 3 "http://localhost:${scraper_port}/v1/health" >/dev/null 2>&1; then
+      scraper_ok=1
+      break
+    fi
+    sleep 3
+  done
+  if [[ ${scraper_ok} -eq 1 ]]; then
     log_ok "scraper: healthy (port ${scraper_port})"
   else
     log_err "scraper: unhealthy or not running"
