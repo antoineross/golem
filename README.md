@@ -160,8 +160,8 @@ GitHub Actions (push to main)
 
 | Secret | Purpose |
 |--------|---------|
-| `GCP_PROJECT_ID` | `manila-research` |
-| `GCP_LOCATION` | `us-central1` |
+| `GCP_PROJECT_ID` | Your GCP project ID |
+| `GCP_LOCATION` | GAR region (e.g. `us-central1`) |
 | `GCP_REPOSITORY` | `golem` (Artifact Registry repo) |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | WIF provider for GitHub Actions |
 | `GCP_SERVICE_ACCOUNT_EMAIL` | SA for GAR push |
@@ -177,7 +177,7 @@ See `.env.prod.example` for the complete list of GCP resource setup commands (Ar
 ### Manual deployment
 
 ```bash
-ssh deploy_golem@34.16.87.152
+ssh <DEPLOY_USER>@<VM_EXTERNAL_IP>
 cd ~/golem
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
