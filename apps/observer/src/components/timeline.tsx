@@ -176,25 +176,29 @@ function EventContent({ event }: { event: TimelineEvent }) {
       )}
 
       {event.tool_name && event.text && (
-        <details className="group">
-          <summary className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground">
-            Span metadata
-          </summary>
-          <div className="mt-1.5 rounded-md bg-muted p-2">
-            <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono max-h-36 overflow-y-auto">
-              {event.text
-                .split("\n")
-                .filter(
-                  (l) =>
-                    !l.startsWith("Arguments:") &&
-                    !l.startsWith("Response:") &&
-                    !l.startsWith("{")
-                )
-                .join("\n")
-                .trim()}
-            </pre>
-          </div>
-        </details>
+        <Accordion className="border-0">
+          <AccordionItem value="span-meta" className="border-0">
+            <AccordionTrigger className="py-1 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground hover:no-underline">
+              Span metadata
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="rounded-md bg-muted p-2">
+                <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono max-h-36 overflow-y-auto">
+                  {event.text
+                    .split("\n")
+                    .filter(
+                      (l) =>
+                        !l.startsWith("Arguments:") &&
+                        !l.startsWith("Response:") &&
+                        !l.startsWith("{")
+                    )
+                    .join("\n")
+                    .trim()}
+                </pre>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useState } from "react";
 import {
   Reasoning,
   ReasoningTrigger,
@@ -22,15 +22,24 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import type { StreamState, StreamingToolCall } from "@/types/streaming";
+import type { StreamState, StreamingToolCall, StreamingLlmCall } from "@/types/streaming";
 import {
   SignalIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
   ClockIcon,
+  CpuChipIcon,
+  CameraIcon,
 } from "@heroicons/react/20/solid";
+import { ChevronDownIcon } from "lucide-react";
 
 interface StreamingTimelineProps {
   state: StreamState;
@@ -72,6 +81,7 @@ function StreamStatusBanner({ state }: { state: StreamState }) {
 
   const config = statusConfig[state.status];
   const isActive = state.status === "streaming" || state.status === "connecting";
+  const totalTokens = state.tokens.input + state.tokens.output + state.tokens.think;
 
   return (
     <div className={`flex items-center justify-between rounded-lg border px-4 py-2 ${config.bg}`}>
@@ -83,13 +93,122 @@ function StreamStatusBanner({ state }: { state: StreamState }) {
             {state.model}
           </Badge>
         )}
+        {state.agentName && (
+          <Badge variant="outline" className="text-[10px] text-purple-400 border-purple-500/20">
+            {state.agentName}
+          </Badge>
+        )}
       </div>
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <span>{state.totalEvents} events</span>
+        {state.llmCalls.length > 0 && (
+          <span>{state.llmCalls.length} LLM</span>
+        )}
         {state.toolCalls.length > 0 && (
           <span>{state.toolCalls.length} tools</span>
         )}
+        {totalTokens > 0 && (
+          <span>{totalTokens.toLocaleString()} tok</span>
+        )}
         {isActive && <Shimmer duration={2}>streaming</Shimmer>}
+      </div>
+    </div>
+  );
+}
+
+function LlmCallCard({ call }: { call: StreamingLlmCall }) {
+  const isPending = call.state === "pending";
+  const totalTokens = (call.inputTokens ?? 0) + (call.outputTokens ?? 0);
+
+  return (
+    <Collapsible className="group not-prose mb-2 w-full rounded-md border border-cyan-500/20">
+      <CollapsibleTrigger className="flex w-full items-center justify-between gap-4 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <CpuChipIcon className="h-4 w-4 text-cyan-400" />
+          <span className="font-medium text-sm">LLM Call</span>
+          <Badge
+            variant="secondary"
+            className="gap-1.5 rounded-full text-xs"
+          >
+            {isPending ? (
+              <>
+                <ClockIcon className="h-3 w-3 animate-pulse" />
+                Pending
+              </>
+            ) : (
+              <>
+                <CheckCircleIcon className="h-3 w-3 text-green-600" />
+                Completed
+              </>
+            )}
+          </Badge>
+          <span className="text-xs text-muted-foreground">{call.model}</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {totalTokens > 0 && (
+            <span className="tabular-nums">{totalTokens.toLocaleString()} tok</span>
+          )}
+          {call.durationMs && (
+            <span className="tabular-nums">
+              {call.durationMs < 1000 ? `${call.durationMs}ms` : `${(call.durationMs / 1000).toFixed(1)}s`}
+            </span>
+          )}
+          <ChevronDownIcon className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="px-3 pb-3 space-y-2">
+        {(call.promptParts != null || call.toolsAvailable != null) && (
+          <div className="flex gap-3 text-xs text-muted-foreground">
+            {call.promptParts != null && <span>Parts: {call.promptParts}</span>}
+            {call.toolsAvailable != null && <span>Tools: {call.toolsAvailable}</span>}
+          </div>
+        )}
+        {call.inputTokens != null && (
+          <div className="rounded-md bg-muted p-2 text-xs space-y-0.5">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Input</span>
+              <span className="tabular-nums">{call.inputTokens.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Output</span>
+              <span className="tabular-nums">{(call.outputTokens ?? 0).toLocaleString()}</span>
+            </div>
+            {(call.thinkTokens ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Thinking</span>
+                <span className="tabular-nums">{call.thinkTokens!.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+        )}
+        {call.promptText && (
+          <details className="group/prompt">
+            <summary className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground">
+              Prompt context
+            </summary>
+            <pre className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap font-mono max-h-48 overflow-y-auto rounded-md bg-muted p-2">
+              {call.promptText}
+            </pre>
+          </details>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function ScreenshotPlaceholder() {
+  return (
+    <div className="rounded-md border border-border overflow-hidden">
+      <div className="bg-muted px-3 py-1.5">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          Screenshot
+        </span>
+      </div>
+      <div className="flex items-center justify-center h-32 bg-black/10">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <CameraIcon className="h-4 w-4 animate-pulse" />
+          <Shimmer duration={2}>capturing...</Shimmer>
+        </div>
       </div>
     </div>
   );
@@ -132,6 +251,9 @@ function StreamingToolCallItem({ toolCall }: { toolCall: StreamingToolCall }) {
         {(parsedOutput !== undefined || errorText) && (
           <ToolOutput output={parsedOutput} errorText={errorText} />
         )}
+        {toolCall.screenshotPending && !toolCall.screenshotUrl && (
+          <ScreenshotPlaceholder />
+        )}
         {toolCall.screenshotUrl && (
           <div className="rounded-md border border-border overflow-hidden">
             <div className="bg-muted px-3 py-1.5">
@@ -152,13 +274,7 @@ function StreamingToolCallItem({ toolCall }: { toolCall: StreamingToolCall }) {
 }
 
 export function StreamingTimeline({ state }: StreamingTimelineProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [state.totalEvents]);
+  const [autoScroll, setAutoScroll] = useState(true);
 
   if (state.status === "idle" && state.events.length === 0) {
     return (
@@ -176,14 +292,38 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
 
   const isStreaming = state.status === "streaming" || state.status === "connecting";
   const hasThoughtsStreaming = state.thoughts.some((t) => t.isStreaming);
+  const finalResponse = state.responses.find((r) => r.isFinal);
   const lastResponse = state.responses.length > 0
     ? state.responses[state.responses.length - 1]
     : null;
-  const finalResponse = state.responses.find((r) => r.isFinal);
+
+  // Build ordered timeline items by timestamp
+  type TimelineItem =
+    | { kind: "thought"; idx: number; ts: string }
+    | { kind: "llm_call"; idx: number; ts: string }
+    | { kind: "tool_call"; idx: number; ts: string };
+
+  const items: TimelineItem[] = [];
+  state.thoughts.forEach((t, i) => items.push({ kind: "thought", idx: i, ts: t.timestamp }));
+  state.llmCalls.forEach((lc, i) => items.push({ kind: "llm_call", idx: i, ts: lc.timestamp }));
+  state.toolCalls.forEach((tc, i) => items.push({ kind: "tool_call", idx: i, ts: tc.timestamp }));
+  items.sort((a, b) => a.ts.localeCompare(b.ts));
 
   return (
     <div className="space-y-3">
-      <StreamStatusBanner state={state} />
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <StreamStatusBanner state={state} />
+        </div>
+        <Button
+          variant={autoScroll ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => setAutoScroll(!autoScroll)}
+          className="shrink-0"
+        >
+          {autoScroll ? "Auto-scroll On" : "Auto-scroll Off"}
+        </Button>
+      </div>
 
       <Conversation className="h-[calc(100vh-320px)]">
         <ConversationContent>
@@ -195,16 +335,26 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
             </Message>
           )}
 
-          {state.thoughts.map((thought, i) => (
-            <Reasoning key={`thought-${i}`} isStreaming={thought.isStreaming}>
-              <ReasoningTrigger />
-              <ReasoningContent>{thought.text}</ReasoningContent>
-            </Reasoning>
-          ))}
-
-          {state.toolCalls.map((tc) => (
-            <StreamingToolCallItem key={tc.id} toolCall={tc} />
-          ))}
+          {items.map((item) => {
+            if (item.kind === "thought") {
+              const thought = state.thoughts[item.idx]!;
+              return (
+                <Reasoning key={`thought-${item.idx}`} isStreaming={thought.isStreaming}>
+                  <ReasoningTrigger />
+                  <ReasoningContent>{thought.text}</ReasoningContent>
+                </Reasoning>
+              );
+            }
+            if (item.kind === "llm_call") {
+              const call = state.llmCalls[item.idx]!;
+              return <LlmCallCard key={call.id} call={call} />;
+            }
+            if (item.kind === "tool_call") {
+              const tc = state.toolCalls[item.idx]!;
+              return <StreamingToolCallItem key={tc.id} toolCall={tc} />;
+            }
+            return null;
+          })}
 
           {isStreaming && !hasThoughtsStreaming && state.toolCalls.length === 0 && state.thoughts.length === 0 && !state.userPrompt && (
             <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
@@ -239,7 +389,7 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
             </div>
           )}
         </ConversationContent>
-        <ConversationScrollButton />
+        {autoScroll && <ConversationScrollButton />}
       </Conversation>
     </div>
   );
