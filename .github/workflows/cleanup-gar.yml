@@ -1,0 +1,85 @@
+name: Cleanup GAR Tags
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        description: "Service display name"
+        required: true
+        type: string
+      image_name:
+        description: "Docker image name"
+        required: true
+        type: string
+      current_sha_tag:
+        description: "Current SHA tag to protect"
+        required: true
+        type: string
+      keep_recent_versions:
+        description: "Number of recent versions to keep"
+        required: false
+        type: number
+        default: 3
+
+jobs:
+  cleanup:
+    name: Cleanup ${{ inputs.service_name }} GAR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Clean up old GAR tags
+        env:
+          REGISTRY_URL: "${{ secrets.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}"
+          PACKAGE_NAME: ${{ inputs.image_name }}
+          CURRENT_SHA_TAG: ${{ inputs.current_sha_tag }}
+          KEEP_RECENT: ${{ inputs.keep_recent_versions }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          echo "Cleaning up old tags for ${PACKAGE_NAME}"
+
+          ALL_IMAGES=$(gcloud artifacts docker images list "${REGISTRY_URL}/${PACKAGE_NAME}" \
+            --include-tags \
+            --sort-by="~CREATE_TIME" \
+            --format="table[no-heading](DIGEST,TAGS.flatten())" 2>/dev/null || true)
+
+          if [ -z "${ALL_IMAGES}" ]; then
+            echo "No images found for ${PACKAGE_NAME}, skipping."
+            exit 0
+          fi
+
+          VERSION=0
+          echo "${ALL_IMAGES}" | while IFS=$' \t' read -r digest tags; do
+            VERSION=$((VERSION + 1))
+
+            if [ "${VERSION}" -le "${KEEP_RECENT}" ]; then
+              echo "KEEP (recent #${VERSION}): ${digest}"
+              continue
+            fi
+
+            [ -z "${tags}" ] && continue
+
+            for tag in ${tags}; do
+              [ -z "$tag" ] && continue
+              [ "$tag" = "latest" ] && continue
+              [ "$tag" = "${CURRENT_SHA_TAG}" ] && continue
+
+              if [[ "${tag}" =~ ^[0-9a-f]{7,8}$ ]]; then
+                echo "DELETE: ${PACKAGE_NAME}:${tag}"
+                gcloud artifacts docker images delete \
+                  "${REGISTRY_URL}/${PACKAGE_NAME}:${tag}" \
+                  --delete-tags --project="${GCP_PROJECT_ID}" --quiet || true
+              fi
+            done
+          done
+
+          echo "Cleanup complete for ${PACKAGE_NAME}"

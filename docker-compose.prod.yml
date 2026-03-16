@@ -1,0 +1,65 @@
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  scraper:
+    image: ${SCRAPER_IMAGE:-golem-scraper:latest}
+    environment:
+      - REDIS_ADDR=redis:6379
+      - HTTP_ADDR=:8081
+      - APP_ENV=production
+      - LIGHTPANDA_CDP_URL=ws://localhost:9222
+      - GEMINI_API_KEY=${GOOGLE_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  demo-target:
+    image: ${DEMO_TARGET_IMAGE:-golem-demo-target:latest}
+    restart: unless-stopped
+
+  golem:
+    image: ${GOLEM_IMAGE:-golem-agent:latest}
+    environment:
+      - SUPACRAWL_API_URL=http://scraper:8081
+      - REDIS_ADDR=redis:6379
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-gemini-3-flash-preview}
+      - GOLEM_LOG_LEVEL=${GOLEM_LOG_LEVEL:-info}
+      - GOLEM_TIMEOUT_SECONDS=${GOLEM_TIMEOUT_SECONDS:-120}
+      - GOLEM_THINKING_LEVEL=${GOLEM_THINKING_LEVEL:-medium}
+    depends_on:
+      redis:
+        condition: service_healthy
+      scraper:
+        condition: service_started
+    volumes:
+      - trace-data:/data/traces
+    restart: unless-stopped
+
+  observer:
+    image: ${OBSERVER_IMAGE:-golem-observer:latest}
+    ports:
+      - "3000:3000"
+    volumes:
+      - trace-data:/data/tmp/tests:ro
+    environment:
+      - TRACE_DIR=/data/tmp/tests
+      - SCREENSHOT_DIR=/data/tmp/screenshots
+      - RUNNER_ENABLED=false
+    depends_on:
+      - golem
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  trace-data:

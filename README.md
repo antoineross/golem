@@ -21,7 +21,7 @@ Traditional security scanners (DAST/SAST) find broken code (SQLi, XSS). G.O.L.E.
 - **Perception**: [Supacrawler](https://github.com/antoine-ross/supacrawler) (LightPanda browser API)
 - **Observer**: Vite + React + Hono (trace visualization dashboard)
 - **Language**: Go 1.23+ / TypeScript
-- **Hosting**: Google Cloud (Cloud Run)
+- **Hosting**: Google Cloud (GCE VM)
 
 ## Quick start
 
@@ -133,6 +133,55 @@ Optional:
 - `GOLEM_THINKING_LEVEL` -- Gemini thinking depth: `low`, `medium`, `high`, `minimal` (default: `medium`)
 
 See `.env.example` for the full list.
+
+## Production deployment
+
+Golem deploys to a GCE VM (`nanowhale`, `us-central1-a`) via GitHub Actions on push to `main`.
+
+### Architecture
+
+```
+GitHub Actions (push to main)
+  |-- detect changes (dorny/paths-filter)
+  |-- build changed services -> Google Artifact Registry
+  |-- SSH into GCE VM -> docker compose pull + up
+```
+
+### CI/CD workflows
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | push/PR to main | Build, vet, test (Go + TS) |
+| `deploy.yml` | push to main | Build images, deploy to VM |
+| `build-service.yml` | reusable | Build + push one service to GAR |
+| `cleanup-gar.yml` | reusable | Prune old image tags |
+
+### GitHub Secrets required
+
+| Secret | Purpose |
+|--------|---------|
+| `GCP_PROJECT_ID` | `manila-research` |
+| `GCP_LOCATION` | `us-central1` |
+| `GCP_REPOSITORY` | `golem` (Artifact Registry repo) |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | WIF provider for GitHub Actions |
+| `GCP_SERVICE_ACCOUNT_EMAIL` | SA for GAR push |
+| `DEPLOY_HOST` | VM external IP |
+| `DEPLOY_USER` | SSH user for deployments |
+| `DEPLOY_SSH_PRIVATE_KEY` | Ed25519 deploy key |
+| `GOOGLE_API_KEY` | Gemini API key |
+
+### First-time setup
+
+See `.env.prod.example` for the complete list of GCP resource setup commands (Artifact Registry, service accounts, Workload Identity Federation, SSH keys).
+
+### Manual deployment
+
+```bash
+ssh deploy_golem@34.16.87.152
+cd ~/golem
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
 
 ## Development
 
