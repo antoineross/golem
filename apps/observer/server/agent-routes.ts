@@ -116,7 +116,7 @@ function startRunViaSpawn(
   });
 }
 
-async function pollGolemStatus(golemApiUrl: string): Promise<void> {
+async function pollGolemStatus(golemApiUrl: string, expectedTraceFile: string): Promise<void> {
   const MAX_POLL_MS = 10 * 60 * 1000;
   const startTime = Date.now();
   const poll = async () => {
@@ -124,10 +124,18 @@ async function pollGolemStatus(golemApiUrl: string): Promise<void> {
       setAgentState({ status: "error", error: "poll timeout: agent did not complete within 10 minutes" });
       return;
     }
+    if (getAgentState().status !== "running") return;
     try {
       const resp = await fetch(`${golemApiUrl}/api/status`);
-      if (!resp.ok) return;
+      if (!resp.ok) {
+        setTimeout(poll, 1000);
+        return;
+      }
       const data = await resp.json() as { status: string; error?: string; trace_file?: string };
+      if (data.trace_file && data.trace_file !== expectedTraceFile) {
+        setTimeout(poll, 500);
+        return;
+      }
       if (data.status === "complete") {
         setAgentState({ status: "complete", error: null });
       } else if (data.status === "error") {
@@ -212,7 +220,7 @@ export function registerAgentRoutes(app: Hono, config: ServerConfig): void {
         setAgentState({ status: "error", error: result.error ?? "failed to start agent" });
         return c.json({ error: result.error }, 502);
       }
-      pollGolemStatus(config.golemApiUrl!);
+      pollGolemStatus(config.golemApiUrl!, traceFile);
     } else {
       startRunViaSpawn(config, harness, prompt, traceFile);
     }

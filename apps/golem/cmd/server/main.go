@@ -71,6 +71,9 @@ func main() {
 			return
 		}
 
+		// Reset any stale complete/error state before starting
+		state.set("idle", "", "")
+
 		var req runRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)

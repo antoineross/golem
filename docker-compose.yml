@@ -23,9 +23,13 @@ services:
       - HTTP_ADDR=:8081
       - APP_ENV=development
       - LIGHTPANDA_CDP_URL=ws://localhost:9222
-      - GEMINI_API_KEY=${GOOGLE_API_KEY:-}
     env_file:
-      - ./apps/scraper/.env.example
+      - path: ./apps/scraper/.env.example
+        required: true
+      - path: .env
+        required: false
+      - path: .env.local
+        required: false
     depends_on:
       redis:
         condition: service_healthy
