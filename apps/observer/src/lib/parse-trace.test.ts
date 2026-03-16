@@ -347,30 +347,26 @@ describe("mergeCompanionEvents", () => {
     expect(first!.type).toBe("text");
   });
 
-  it("injects agent lifecycle events", () => {
+  it("does not inject standalone agent lifecycle events", () => {
     const merged = mergeCompanionEvents(baseTrace, ENRICHED_EVENTS);
     const starts = merged.events.filter((e) => e.id?.startsWith("agent-start"));
     const ends = merged.events.filter((e) => e.id?.startsWith("agent-end"));
-    expect(starts.length).toBe(1);
-    expect(ends.length).toBe(1);
-    expect(starts[0]!.type).toBe("agent");
+    expect(starts.length).toBe(0);
+    expect(ends.length).toBe(0);
   });
 
-  it("injects llm_request events with prompt text", () => {
+  it("does not inject standalone llm_request events", () => {
     const merged = mergeCompanionEvents(baseTrace, ENRICHED_EVENTS);
     const llmReqs = merged.events.filter((e) => e.id?.startsWith("llm-request"));
-    expect(llmReqs.length).toBe(1);
-    expect(llmReqs[0]!.text).toContain("[user] Hello world");
-    expect(llmReqs[0]!.model).toBe("gemini-3-flash-preview");
+    expect(llmReqs.length).toBe(0);
   });
 
-  it("injects llm_response_meta events with token counts", () => {
+  it("merges llm_response_meta token data into OTel llm_call events", () => {
     const merged = mergeCompanionEvents(baseTrace, ENRICHED_EVENTS);
-    const metas = merged.events.filter((e) => e.id?.startsWith("llm-meta"));
-    expect(metas.length).toBe(1);
-    expect(metas[0]!.text).toContain("1,350");
-    expect(metas[0]!.text).toContain("3486ms");
-    expect(metas[0]!.duration_ms).toBe(3486);
+    const llmCalls = merged.events.filter((e) => e.type === "llm_call");
+    expect(llmCalls.length).toBeGreaterThan(0);
+    const first = llmCalls[0]!;
+    expect(first.tokens).toEqual({ input: 1350, output: 14, thoughts: 87 });
   });
 
   it("injects final response at the end", () => {
