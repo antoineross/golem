@@ -49,24 +49,15 @@ const TaskTypeScreenshot = "screenshot:task"
 func New(cfg config.Config, jobs *job.JobService, pool *browser.Pool) (*Service, error) {
 	s := &Service{log: logger.New("ScreenshotService"), cfg: cfg, jobs: jobs, pool: pool}
 
-	// In production, Supabase configuration is required
-	if cfg.AppEnv == "production" {
-		if cfg.SupabaseURL == "" || cfg.SupabaseServiceKey == "" || cfg.SupabaseBucket == "" {
-			return nil, fmt.Errorf("production environment requires Supabase configuration: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_STORAGE_BUCKET must be set")
-		}
-	}
-
-	// Initialize supabase client if credentials provided
 	if cfg.SupabaseURL != "" && cfg.SupabaseServiceKey != "" {
 		client, err := supabase.NewClient(cfg.SupabaseURL, cfg.SupabaseServiceKey, nil)
 		if err != nil {
-			if cfg.AppEnv == "production" {
-				return nil, fmt.Errorf("failed to initialize Supabase client in production: %w", err)
-			}
 			s.log.LogWarnf("failed to initialize Supabase client: %v", err)
 		} else {
 			s.supabaseClient = client
 		}
+	} else {
+		s.log.LogInfof("Supabase not configured, screenshots will use local storage at %s/screenshots", cfg.DataDir)
 	}
 	return s, nil
 }
@@ -333,14 +324,6 @@ func (s *Service) getCookies(ptr *[]map[string]interface{}, def []map[string]int
 }
 
 func (s *Service) save(data []byte, r Request) (string, string, error) {
-	// Debug: Check Supabase configuration
-	s.log.LogInfof("🔍 Supabase config check:")
-	s.log.LogInfof("  - Client initialized: %v", s.supabaseClient != nil)
-	s.log.LogInfof("  - Bucket: '%s'", s.cfg.SupabaseBucket)
-	s.log.LogInfof("  - URL set: %v", s.cfg.SupabaseURL != "")
-	s.log.LogInfof("  - ServiceKey set: %v", s.cfg.SupabaseServiceKey != "")
-	s.log.LogInfof("  - App Environment: %s", s.cfg.AppEnv)
-
 	// If supabase configured, upload to bucket and return signed URL
 	if s.supabaseClient != nil && s.cfg.SupabaseBucket != "" && s.cfg.SupabaseURL != "" && s.cfg.SupabaseServiceKey != "" {
 		s.log.LogDebugf("Attempting Supabase upload...")
@@ -360,41 +343,21 @@ func (s *Service) save(data []byte, r Request) (string, string, error) {
 
 		reader := bytes.NewReader(data)
 		if _, err := s.supabaseClient.Storage.UploadFile(s.cfg.SupabaseBucket, bucketPath, reader, storage_go.FileOptions{ContentType: &mimeType}); err != nil {
-			s.log.LogWarnf("Supabase upload failed: %v", err)
-			// In production, return error instead of falling back to local storage
-			if s.cfg.AppEnv == "production" {
-				return "", "", fmt.Errorf("failed to upload screenshot to Supabase storage in production: %w", err)
-			}
-			// Fallback to local file on upload failure for non-production
+			s.log.LogWarnf("Supabase upload failed, falling back to local storage: %v", err)
 			goto LOCAL
 		}
 		s.log.LogDebugf("Supabase upload successful, creating signed URL...")
 
-		// Create signed URL - you can switch between methods here
 		signed, err := s.createSignedURLWorkaround(s.cfg.SupabaseBucket, bucketPath, 15*60)
-
 		if err != nil {
-			s.log.LogWarnf("Supabase signed URL creation failed: %v", err)
-			// In production, return error instead of falling back to local storage
-			if s.cfg.AppEnv == "production" {
-				return "", "", fmt.Errorf("failed to create signed URL for screenshot in production: %w", err)
-			}
-			// Fallback to local file on sign failure for non-production
+			s.log.LogWarnf("Supabase signed URL creation failed, falling back to local storage: %v", err)
 			goto LOCAL
 		}
 		s.log.LogInfof("Successfully created Supabase signed URL: %s", signed)
 		return "", signed, nil
-	} else {
-		s.log.LogWarnf("Supabase not configured properly, using local storage fallback")
-	}
-
-	// In production, if Supabase is not configured, return error
-	if s.cfg.AppEnv == "production" {
-		return "", "", fmt.Errorf("supabase storage is required in production environment")
 	}
 
 LOCAL:
-	// Local-only fallback (only allowed in non-production environments)
 	_ = os.MkdirAll(filepath.Join(s.cfg.DataDir, "screenshots"), 0o755)
 	name := time.Now().Format("20060102_150405") + "_" + sanitize(r.Url) + ".png"
 	path := filepath.Join(s.cfg.DataDir, "screenshots", name)
