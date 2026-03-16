@@ -220,6 +220,57 @@ func TestCreateScreenshot_Success(t *testing.T) {
 	}
 }
 
+func TestScreenshot_PollWith202(t *testing.T) {
+	pollCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/screenshots" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(ScreenshotJobResponse{
+				Success: true,
+				JobID:   "job-202",
+				Status:  "processing",
+			})
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/screenshots" {
+			pollCount++
+			w.Header().Set("Content-Type", "application/json")
+			if pollCount < 3 {
+				w.WriteHeader(http.StatusAccepted)
+				json.NewEncoder(w).Encode(ScreenshotGetResponse{
+					Success: true,
+					JobID:   "job-202",
+					Status:  "processing",
+				})
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(ScreenshotGetResponse{
+				Success:    true,
+				JobID:      "job-202",
+				Screenshot: "https://cdn.example.com/shot.png",
+				Status:     "completed",
+				Metadata:   &ScreenshotMetadata{Width: 1280, Height: 720, Format: "png"},
+			})
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	c := NewClientWithURL(srv.URL)
+	resp, err := c.Screenshot(context.Background(), ScreenshotRequest{URL: "https://example.com"})
+	if err != nil {
+		t.Fatalf("screenshot should succeed after 202 polls, got: %v", err)
+	}
+	if resp.Screenshot != "https://cdn.example.com/shot.png" {
+		t.Errorf("unexpected screenshot URL: %s", resp.Screenshot)
+	}
+	if pollCount < 3 {
+		t.Errorf("expected at least 3 poll attempts, got %d", pollCount)
+	}
+}
+
 func TestCreateScreenshot_Failed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
