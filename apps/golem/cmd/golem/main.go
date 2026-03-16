@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"google.golang.org/adk/agent"
@@ -71,7 +72,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	callbacks := golemAdk.NewCallbacks(logger)
+	callbacks := golemAdk.NewCallbacks(logger, tw, llmCfg.DefaultModel)
 
 	auditor, err := golemAdk.NewAuditor(llm, tools, generateCfg,
 		golemAdk.WithBeforeAgent(callbacks.BeforeAgent),
@@ -257,8 +258,15 @@ func extractScreenshotURL(toolName, respJSON string) string {
 	if err := json.Unmarshal([]byte(respJSON), &m); err != nil {
 		return ""
 	}
-	if u, ok := m["screenshot_url"].(string); ok {
-		return u
+	u, ok := m["screenshot_url"].(string)
+	if !ok || u == "" {
+		return ""
 	}
-	return ""
+	if strings.HasPrefix(u, "/") {
+		base := os.Getenv("SUPACRAWL_API_URL")
+		if base != "" {
+			return strings.TrimRight(base, "/") + u
+		}
+	}
+	return u
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { TraceSummary, TraceFile } from "@/types/trace";
 import { parseTrace, mergeCompanionEvents } from "@/lib/parse-trace";
 
@@ -8,6 +8,7 @@ export function useTraceList() {
   const [files, setFiles] = useState<TraceFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshCount, setRefreshCount] = useState(0);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/traces`)
@@ -24,9 +25,10 @@ export function useTraceList() {
         setError(err.message);
         setLoading(false);
       });
-  }, []);
+  }, [refreshCount]);
 
-  return { files, loading, error };
+  const refresh = useCallback(() => setRefreshCount((c) => c + 1), []);
+  return { files, loading, error, refresh };
 }
 
 export function useTrace(filePath: string | null) {
@@ -73,20 +75,30 @@ export function useTrace(filePath: string | null) {
 
 export function useTraceSSE(
   onTrace: (trace: TraceSummary, raw: string) => void,
-  enabled = true
+  enabled = true,
+  traceFile?: string | null,
 ) {
+  const onTraceRef = useRef(onTrace);
+  onTraceRef.current = onTrace;
+
   useEffect(() => {
     if (!enabled) return;
-    const es = new EventSource(`${API_BASE}/api/traces/stream`);
+    const params = traceFile ? `?file=${encodeURIComponent(traceFile)}` : "";
+    const es = new EventSource(`${API_BASE}/api/traces/stream${params}`);
     es.addEventListener("trace", (e) => {
-      const raw = e.data;
       try {
-        const parsed = parseTrace(raw);
-        onTrace(parsed, raw);
-      } catch (e) {
-        console.warn("failed to parse SSE trace data:", e);
+        const payload = JSON.parse(e.data);
+        const content = payload.content as string;
+        const events = (payload.events as string) ?? null;
+        let parsed = parseTrace(content);
+        if (events) {
+          parsed = mergeCompanionEvents(parsed, events);
+        }
+        onTraceRef.current(parsed, content);
+      } catch (err) {
+        console.warn("failed to parse SSE trace data:", err);
       }
     });
     return () => es.close();
-  }, [onTrace, enabled]);
+  }, [enabled, traceFile]);
 }

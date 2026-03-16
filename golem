@@ -214,7 +214,7 @@ Services:
 Development:
   lint               Run linters (go vet)
   test               Run Go unit tests
-  e2e [name]         Run E2E test harness (thinking, agent, level0)
+  e2e [name]         Run E2E test harness (thinking, agent, level0, level1a, level1b, level2)
   env list           Show env configuration status
   help               Show this help
 
@@ -454,8 +454,11 @@ cleanup_old_runs() {
 
   local files
   files=$(find "${dir}" -maxdepth 1 -name "*.json" -not -name "*_events.jsonl" | sort)
+  if [[ -z "${files}" ]]; then
+    return 0
+  fi
   local count
-  count=$(echo "${files}" | grep -c . 2>/dev/null || echo 0)
+  count=$(echo "${files}" | wc -l | tr -d ' ')
 
   if [[ ${count} -gt ${keep} ]]; then
     local to_delete=$((count - keep))
@@ -499,6 +502,25 @@ cmd_test() {
     (cd "${REPO_ROOT}/apps/observer" && bun run test)
     log_ok "observer tests passed"
   fi
+}
+
+run_harness() {
+  local name="$1"
+  local log_file="$2"
+  local trace_file="$3"
+  local prompt="$4"
+  local e2e_rc=0
+  (cd "${REPO_ROOT}/apps/golem" && \
+    GOLEM_TRACE_FILE="${trace_file}" \
+    GOLEM_TRACE_CAPTURE_CONTENT=true \
+    go run ./cmd/golem/main.go "${prompt}") > "${log_file}" 2>&1 || e2e_rc=$?
+  if [[ "${e2e_rc}" -ne 0 ]]; then
+    log_err "${name} E2E failed (exit code ${e2e_rc}) -- check ${log_file}"
+    ls -la "$(dirname "${log_file}")/"
+    exit "${e2e_rc}"
+  fi
+  log_ok "${name} E2E complete -- output: $(dirname "${log_file}")/"
+  ls -la "$(dirname "${log_file}")/"
 }
 
 cmd_e2e() {
@@ -559,9 +581,33 @@ cmd_e2e() {
       log_ok "level 0 E2E complete -- output: ${out_dir}/"
       ls -la "${out_dir}/"
       ;;
+    level1a)
+      local demo_url="${DEMO_TARGET_URL:-http://host.docker.internal:4000}"
+      local log_file="${out_dir}/level1a_e2e.log"
+      local trace_file="${out_dir}/level1a_otel_spans.json"
+      local prompt="You are auditing ${demo_url}. This is a Level 1a test: find the floating action button (FAB) on the page, click it, read the support chat history, extract any leaked credentials and hidden URLs. Then navigate to the discovered URL and use the credentials to gain access."
+      log_info "running level 1a E2E (multi-step UI interaction, requires scraper + demo-target)"
+      run_harness "level1a" "${log_file}" "${trace_file}" "${prompt}"
+      ;;
+    level1b)
+      local demo_url="${DEMO_TARGET_URL:-http://host.docker.internal:4000}"
+      local log_file="${out_dir}/level1b_e2e.log"
+      local trace_file="${out_dir}/level1b_otel_spans.json"
+      local prompt="You are auditing ${demo_url}. This is a Level 1b test: navigate to ${demo_url}/system-health, take a screenshot, analyze the visual content (especially any canvas-rendered alerts), find any hidden API endpoints mentioned in the visual content, then call those endpoints to check for data leaks."
+      log_info "running level 1b E2E (visual reasoning / canvas, requires scraper + demo-target)"
+      run_harness "level1b" "${log_file}" "${trace_file}" "${prompt}"
+      ;;
+    level2)
+      local demo_url="${DEMO_TARGET_URL:-http://host.docker.internal:4000}"
+      local log_file="${out_dir}/level2_e2e.log"
+      local trace_file="${out_dir}/level2_otel_spans.json"
+      local prompt="You are auditing ${demo_url}. This is a Level 2 test: navigate to ${demo_url}/admin, find the 'Delete Database' button. A modal popup will appear blocking it. Close the modal first, then interact with the delete button. Report what happens and any API endpoints discovered."
+      log_info "running level 2 E2E (spatial reasoning / modal obstruction, requires scraper + demo-target)"
+      run_harness "level2" "${log_file}" "${trace_file}" "${prompt}"
+      ;;
     *)
       log_err "unknown E2E harness: ${harness}"
-      echo "Available: thinking, agent, level0"
+      echo "Available: thinking, agent, level0, level1a, level1b, level2"
       exit 1
       ;;
   esac

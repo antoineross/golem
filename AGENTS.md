@@ -137,7 +137,9 @@ cp .env.example .env.local    # fill in API keys
 
 Never bypass the wrapper with raw docker compose commands. The wrapper handles env file selection (`--env-file`), project naming, and consistent behavior.
 
-**Process management**: Always use `./golem stop` to shut down services. Never use `kill -9`, `lsof | xargs kill`, or similar signals to stop golem or its Docker services -- this can corrupt containers and break other running Docker services (e.g. nanowhale). The `./golem stop` command runs `docker compose down` which cleanly shuts down only golem's containers.
+**Process management**: Always use `./golem stop` to shut down services. Never use `kill`, `kill -9`, `lsof -ti:PORT | xargs kill`, `pkill`, or any manual signal to stop golem services. This includes port 3000 (observer), port 8083 (scraper), port 6380 (redis), and port 8081 (golem). Killing processes by port or PID corrupts Docker containers and breaks other running Docker services (e.g. nanowhale). The `./golem stop` command runs `docker compose down` which cleanly shuts down only golem's containers without affecting anything else.
+
+**Never run raw `bun run server.ts` or `curl` against localhost to test the observer.** Use `./golem start --observer` to start it and `./golem status` to verify. For E2E testing, use `./golem e2e <harness>`. For unit tests, use `./golem test`.
 
 | Do this | Not this |
 |---------|----------|
@@ -157,8 +159,9 @@ Never bypass the wrapper with raw docker compose commands. The wrapper handles e
 | scraper | 8083 | Supacrawler perception layer (LightPanda browser) |
 | golem | 8081 | Agent (ADK-Go, hot-reload via Air) |
 | observer | 3000 | Trace visualization UI (Vite + Hono) |
+| demo-target | 4000 | Next.js vulnerable app for E2E testing (levels 1a, 1b, 2) |
 
-Ports are configurable via env vars (`REDIS_PORT`, `SCRAPER_PORT`, `GOLEM_PORT`). Defaults are chosen to avoid collisions with other local services.
+Ports are configurable via env vars (`REDIS_PORT`, `SCRAPER_PORT`, `GOLEM_PORT`, `DEMO_TARGET_PORT`). Defaults are chosen to avoid collisions with other local services.
 
 ### start options
 

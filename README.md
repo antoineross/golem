@@ -17,68 +17,126 @@ Traditional security scanners (DAST/SAST) find broken code (SQLi, XSS). G.O.L.E.
 ## Tech stack
 
 - **Brain**: [Google Gemini 3 Flash](https://ai.google.dev/) (reasoning + multimodal vision)
-- **Orchestration**: [Google ADK-Go v0.3.0](https://github.com/google/adk-go) (llmagent pattern)
-- **Perception**: [Supacrawler](https://github.com/antoine-ross/supacrawler) (Playwright-powered API)
-- **Language**: Go 1.23+
+- **Orchestration**: [Google ADK-Go v0.6.0](https://github.com/google/adk-go) (llmagent pattern)
+- **Perception**: [Supacrawler](https://github.com/antoine-ross/supacrawler) (LightPanda browser API)
+- **Observer**: Vite + React + Hono (trace visualization dashboard)
+- **Language**: Go 1.23+ / TypeScript
 - **Hosting**: Google Cloud (Cloud Run)
 
 ## Quick start
 
 ```bash
-# Clone the repository
-git clone https://github.com/antoine-ross/golem.git
+git clone https://github.com/antoineross/golem.git
 cd golem
 
-# Set up environment
 cp .env.example .env.local
-# Edit .env.local with your API keys
+# Edit .env.local -- set GOOGLE_API_KEY at minimum
 
-# Verify configuration
-./golem env list
-
-# Run the agent
-./golem start
+./golem env list    # verify configuration
+./golem start       # start all services via docker compose
+./golem status      # check health
 ```
+
+Open [http://localhost:3000](http://localhost:3000) for the observer dashboard.
 
 ## Prerequisites
 
-- Go 1.23+
-- A running [Supacrawler](https://github.com/antoine-ross/supacrawler) instance
+- Docker (required -- all services run in containers)
+- Go 1.23+ (for local E2E testing only)
 - Google Gemini API key
+
+## Services
+
+All services run via `docker compose` through the `./golem` CLI.
+
+| Service | Host Port | Internal Port | Description |
+|---------|-----------|---------------|-------------|
+| observer | 3000 | 3000 | Trace visualization dashboard (Vite + Hono) |
+| demo-target | 4000 | 4000 | Next.js vulnerable app for E2E testing |
+| scraper | 8083 | 8081 | Supacrawler perception layer (LightPanda browser) |
+| golem | 8081 | 8080 | Agent (ADK-Go, hot-reload via Air) |
+| redis | 6380 | 6379 | Task queue and caching |
+
+Ports are configurable via env vars (`SCRAPER_PORT`, `GOLEM_PORT`, `REDIS_PORT`, `DEMO_TARGET_PORT`).
 
 ## Commands
 
 ```bash
-./golem start       # Start the agent
-./golem stop        # Stop the agent
-./golem status      # Show agent process status
-./golem env list    # Show env configuration status
-./golem lint        # Run linters (when available)
-./golem test        # Run tests (when available)
-./golem help        # Show all commands
+# Service lifecycle
+./golem start                # start all services (detached, with build)
+./golem start -t             # start and tail logs
+./golem start --observer     # start observer only
+./golem start --scraper      # start redis + scraper only
+./golem stop                 # stop all services
+./golem restart              # restart all services
+./golem status               # check service health
+./golem logs                 # tail all logs
+./golem logs golem           # tail golem agent logs only
+
+# Development
+./golem build                # build all Docker images
+./golem lint                 # run go vet + eslint
+./golem test                 # run Go + observer unit tests
+./golem env list             # show env configuration status
+
+# E2E testing
+./golem e2e level0           # echo + payload (no scraper needed)
+./golem e2e level1a          # multi-step UI interaction
+./golem e2e level1b          # visual reasoning / canvas
+./golem e2e level2           # spatial reasoning / modal obstruction
+./golem e2e thinking         # thinking mode test
+./golem e2e agent            # full agent test with custom prompt
+
+# Cleanup
+./golem reset --confirm      # stop services, wipe volumes + tmp/
+./golem clean --confirm      # remove stopped containers + build cache
 ```
+
+## E2E test levels
+
+| Level | Difficulty | What it tests | Requires |
+|-------|-----------|---------------|----------|
+| 0 | Trivial | Tool calling (echo + payload) | API key only |
+| 1a | Easy | Hidden elements, credential extraction, multi-page navigation | Scraper + demo-target |
+| 1b | Medium | Visual analysis, canvas content, API endpoint discovery | Scraper + demo-target |
+| 2 | Hard | Spatial reasoning, modal dismissal, destructive action discovery | Scraper + demo-target |
 
 ## Project structure
 
 ```text
 apps/
-  golem/                    -- the agent
-    cmd/golem/main.go       -- entry point
-    internal/adk/           -- model factory, runner, agent config
-    internal/browser/       -- Supacrawl client, browser_action tool
-    internal/perception/    -- state mapping, hidden element detection
-    internal/security/      -- attack trees, payload engineering
-    internal/report/        -- regex parser for vulnerability reports
-  scraper/                  -- Supacrawler perception layer
-    cmd/main.go             -- scraper entry point
-    internal/core/          -- scrape, crawl, screenshot, parse services
-docker-compose.yml          -- local dev: golem + scraper + redis
-tmp/                        -- local dev artifacts (gitignored)
+  golem/                      -- the agent (Go)
+    cmd/golem/main.go         -- entry point, wiring, event loop
+    internal/adk/             -- model factory, runner, agent config, tools
+    internal/adk/prompts/     -- modular system prompt sections
+    internal/supacrawl/       -- HTTP client for scraper API
+  scraper/                    -- Supacrawler perception layer (Go)
+    internal/core/            -- scrape, crawl, screenshot, parse services
+  observer/                   -- trace visualization UI (TypeScript)
+    src/                      -- React app (Vite + Tailwind + shadcn)
+    server.ts                 -- Hono backend (API + SSE + agent runner)
+  demo-target/                -- vulnerable Next.js app for E2E testing
+docker-compose.yml            -- service orchestration
+golem                         -- CLI wrapper (bash)
 ```
+
+## Environment variables
+
+Required:
+- `GOOGLE_API_KEY` -- Gemini API key (or `GEMINI_API_KEY` as fallback)
+
+Optional:
+- `SUPACRAWL_API_URL` -- scraper URL (default: `http://localhost:8083`)
+- `DEFAULT_LLM_MODEL` -- model name (default: `gemini-3-flash-preview`)
+- `GOLEM_LOG_LEVEL` -- log level (default: `info`)
+- `GOLEM_TIMEOUT_SECONDS` -- agent timeout (default: `120`)
+- `GOLEM_THINKING_LEVEL` -- Gemini thinking depth: `low`, `medium`, `high`, `minimal` (default: `medium`)
+
+See `.env.example` for the full list.
 
 ## Development
 
-See `AGENTS.md` for the full workflow contract including branching, versioning, and quality gates.
+See `AGENTS.md` for the full workflow contract including branching, versioning, quality gates, and testing policy.
 
 ## License
 

@@ -36,9 +36,10 @@ interface Scenario {
 
 interface ScenarioLauncherProps {
   onRunStarted: (traceFile: string) => void;
+  onRunComplete?: () => void;
 }
 
-export function ScenarioLauncher({ onRunStarted }: ScenarioLauncherProps) {
+export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLauncherProps) {
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Record<string, Scenario>>({});
@@ -60,13 +61,14 @@ export function ScenarioLauncher({ onRunStarted }: ScenarioLauncherProps) {
         setError(data.error);
         if (data.status !== "running") {
           clearInterval(interval);
+          onRunComplete?.();
         }
       } catch {
         clearInterval(interval);
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [onRunComplete]);
 
   const runScenario = async (scenarioKey: string) => {
     try {
