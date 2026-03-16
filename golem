@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BLUE='\033[0;34m'
+RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 PROJECT_NAME="${PROJECT_NAME:-golem}"
-BASE_ENV_PATH="${REPO_ROOT}/.env"
-LOCAL_ENV_PATH="${REPO_ROOT}/.env.local"
-PID_FILE="${REPO_ROOT}/tmp/golem.pid"
 LOG_DIR="${REPO_ROOT}/tmp/logs"
-ENV_SOURCES=()
-ENV_SOURCES_DISPLAY=""
-ENV_LOADED=""
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_ok() { echo -e "${GREEN}[OK]${NC} $1"; }
@@ -27,6 +26,24 @@ ensure_tmp() {
   for d in "${dirs[@]}"; do
     mkdir -p "${REPO_ROOT}/${d}"
   done
+}
+
+check_docker() {
+  if ! command -v docker &>/dev/null; then
+    log_err "docker is not installed or not in PATH"
+    exit 1
+  fi
+  if ! docker info &>/dev/null; then
+    log_err "docker daemon is not running"
+    exit 1
+  fi
+}
+
+check_go() {
+  if ! command -v go &>/dev/null; then
+    log_err "go is required but not installed"
+    exit 1
+  fi
 }
 
 trim_whitespace() {
@@ -67,6 +84,61 @@ apply_env_file() {
   done < "${env_path}"
 }
 
+ENV_FILE=""
+ENV_SOURCES=()
+ENV_SOURCES_DISPLAY=""
+ENV_LOADED=""
+
+check_env() {
+  ENV_SOURCES=()
+  ENV_SOURCES_DISPLAY=""
+  ENV_LOADED=""
+
+  local base_env="${REPO_ROOT}/.env"
+  local local_env="${REPO_ROOT}/.env.local"
+
+  if [[ -f "${local_env}" ]]; then
+    ENV_FILE="${local_env}"
+    ENV_SOURCES+=("${local_env}")
+    ENV_SOURCES_DISPLAY=".env.local"
+  elif [[ -f "${base_env}" ]]; then
+    ENV_FILE="${base_env}"
+    ENV_SOURCES+=("${base_env}")
+    ENV_SOURCES_DISPLAY=".env"
+  fi
+
+  if [[ -f "${base_env}" && -f "${local_env}" ]]; then
+    ENV_SOURCES=("${base_env}" "${local_env}")
+    ENV_SOURCES_DISPLAY=".env (base) + .env.local (overrides)"
+  fi
+
+  if [[ ${#ENV_SOURCES[@]} -eq 0 ]]; then
+    if [[ -f "${REPO_ROOT}/.env.example" ]]; then
+      log_warn "no .env.local/.env found; creating .env.local from .env.example"
+      cp "${REPO_ROOT}/.env.example" "${REPO_ROOT}/.env.local"
+      log_warn "fill in .env.local values, then retry"
+      exit 1
+    else
+      log_warn "no env files found; some commands may not work"
+      ENV_SOURCES_DISPLAY="(none)"
+      return
+    fi
+  fi
+
+  log_info "loading ${ENV_SOURCES_DISPLAY}"
+}
+
+load_env() {
+  if [[ -n "${ENV_LOADED}" ]]; then
+    return
+  fi
+  local env_path
+  for env_path in "${ENV_SOURCES[@]}"; do
+    apply_env_file "${env_path}"
+  done
+  ENV_LOADED="1"
+}
+
 read_env_var_from_sources() {
   local key="$1"
   local value=""
@@ -76,14 +148,12 @@ read_env_var_from_sources() {
     while IFS= read -r line || [[ -n "${line}" ]]; do
       line="${line%$'\r'}"
       line="$(trim_whitespace "${line}")"
-
       if [[ -z "${line}" || "${line:0:1}" == "#" ]]; then
         continue
       fi
       if [[ "${line}" == export* ]]; then
         line="$(trim_whitespace "${line#export}")"
       fi
-
       if [[ "${line}" =~ ^${key}[[:space:]]*=(.*)$ ]]; then
         raw="$(trim_whitespace "${BASH_REMATCH[1]}")"
         if [[ "${raw}" == \"*\" && "${raw}" == *\" ]]; then
@@ -97,65 +167,29 @@ read_env_var_from_sources() {
       fi
     done < "${env_path}"
   done
-
   printf '%s' "${value}"
 }
 
-check_env() {
-  ENV_SOURCES=()
-  ENV_SOURCES_DISPLAY=""
-  ENV_LOADED=""
-
-  if [[ -f "${BASE_ENV_PATH}" ]]; then
-    ENV_SOURCES+=("${BASE_ENV_PATH}")
-    ENV_SOURCES_DISPLAY=".env"
-  fi
-  if [[ -f "${LOCAL_ENV_PATH}" ]]; then
-    ENV_SOURCES+=("${LOCAL_ENV_PATH}")
-    if [[ -n "${ENV_SOURCES_DISPLAY}" ]]; then
-      ENV_SOURCES_DISPLAY="${ENV_SOURCES_DISPLAY} + .env.local"
-    else
-      ENV_SOURCES_DISPLAY=".env.local"
-    fi
-  fi
-
-  if [[ ${#ENV_SOURCES[@]} -eq 0 && -f "${REPO_ROOT}/.env.example" ]]; then
-    log_warn "no .env.local/.env found; creating .env.local from .env.example"
-    cp "${REPO_ROOT}/.env.example" "${REPO_ROOT}/.env.local"
-    log_warn "fill in .env.local values, then retry"
-    exit 1
-  elif [[ ${#ENV_SOURCES[@]} -eq 0 ]]; then
-    log_warn "no env files found; some commands may not work without configuration"
-    ENV_SOURCES_DISPLAY="(none)"
-    return
-  fi
-
-  if [[ "${ENV_SOURCES_DISPLAY}" == ".env + .env.local" ]]; then
-    log_info "loading .env (base) with .env.local overrides"
-  else
-    log_info "loading ${ENV_SOURCES_DISPLAY}"
-  fi
+dc() {
+  docker compose -f "${COMPOSE_FILE}" -p "${PROJECT_NAME}" "$@"
 }
 
-load_env() {
-  if [[ -n "${ENV_LOADED}" ]]; then
-    return
-  fi
-
-  local env_path
-  for env_path in "${ENV_SOURCES[@]}"; do
-    apply_env_file "${env_path}"
+dc_env() {
+  local env_args=()
+  local src
+  for src in "${ENV_SOURCES[@]}"; do
+    env_args+=(--env-file "${src}")
   done
-
-  ENV_LOADED="1"
-}
-
-check_go() {
-  if ! command -v go >/dev/null 2>&1; then
-    log_err "go is required but not installed"
-    exit 1
+  if [[ ${#env_args[@]} -gt 0 ]]; then
+    docker compose -f "${COMPOSE_FILE}" "${env_args[@]}" -p "${PROJECT_NAME}" "$@"
+  else
+    dc "$@"
   fi
 }
+
+# =============================================================================
+# Commands
+# =============================================================================
 
 usage() {
   cat <<'EOF'
@@ -163,80 +197,374 @@ golem - agent workflow CLI
 
 Usage: ./golem <command> [options]
 
-Commands:
-  start           Start the golem agent
-  stop            Stop the golem agent
-  restart         Restart the golem agent
-  status          Show agent process status
-  env list        Show env configuration status
-  build           Build the Go binary
-  lint            Run linters
-  test            Run tests
-  e2e [name]      Run E2E test harness (thinking, agent)
-  help            Show this help
+Services:
+  start [options]    Start all services via docker compose
+                     -t, --tail      Tail logs after starting
+                     --no-build      Skip rebuilding images
+                     --scraper       Start redis + scraper only
+                     --observer      Start observer only
+  stop               Stop all services
+  restart            Restart all services
+  status             Show status of all services and health checks
+  logs [service]     Tail logs (all or specific: golem, scraper, observer, redis)
+  reset [--confirm]  Stop services and wipe all data (volumes, tmp/)
+  clean [--confirm]  Remove stopped containers, dangling images, build cache
+  build              Build all Docker images
+
+Development:
+  lint               Run linters (go vet)
+  test               Run Go unit tests
+  e2e [name]         Run E2E test harness (thinking, agent, level0)
+  env list           Show env configuration status
+  help               Show this help
+
+Examples:
+  ./golem start              # Start all services (detached)
+  ./golem start -t           # Start and tail logs
+  ./golem start --observer   # Start observer only
+  ./golem logs golem         # Tail golem agent logs
+  ./golem status             # Check service health
+  ./golem e2e level0         # Run level 0 E2E (no scraper needed)
+  ./golem reset --confirm    # Wipe and restart fresh
+  ./golem clean --confirm    # Remove dangling images and build cache
+
 EOF
 }
 
 cmd_start() {
+  check_docker
+  check_env
+  load_env
+  ensure_tmp
+
+  local tail=""
+  local build_flag="--build"
+  local services=""
+
+  for arg in "$@"; do
+    case "$arg" in
+      --tail|-t) tail="yes" ;;
+      --no-build) build_flag="" ;;
+      --scraper) services="redis scraper" ;;
+      --observer) services="observer" ;;
+    esac
+  done
+
+  log_info "starting golem services..."
+
+  dc_env up ${build_flag} -d ${services}
+  log_ok "services started"
+
+  if [[ -z "${services}" ]]; then
+    log_info "waiting for redis to be healthy..."
+    local retries=15
+    while [[ ${retries} -gt 0 ]]; do
+      if dc exec -T redis redis-cli ping &>/dev/null; then
+        break
+      fi
+      sleep 1
+      ((retries--))
+    done
+
+    if [[ ${retries} -eq 0 ]]; then
+      log_warn "redis health check timed out"
+    else
+      log_ok "redis: healthy"
+    fi
+  fi
+
+  echo ""
+  log_info "services:"
+  log_info "  scraper:  http://localhost:${SCRAPER_PORT:-8083}/v1/health"
+  log_info "  observer: http://localhost:3000"
+  log_info "  redis:    localhost:${REDIS_PORT:-6380}"
+  echo ""
+  log_info "use './golem logs' to view logs"
+  log_info "use './golem status' to check health"
+
+  if [[ "${tail}" == "yes" ]]; then
+    log_info "tailing logs (Ctrl+C to stop, services keep running)..."
+    dc_env logs -f ${services}
+  fi
+}
+
+cmd_stop() {
+  check_docker
+  check_env
+  load_env
+
+  log_info "stopping golem services..."
+  dc_env down
+  log_ok "services stopped"
+}
+
+cmd_restart() {
+  cmd_stop
+  cmd_start "$@"
+}
+
+cmd_status() {
+  check_docker
+  check_env
+  load_env
+
+  echo ""
+  echo "=== Golem Service Status ==="
+  echo ""
+
+  if ! dc_env ps --quiet 2>/dev/null | grep -q .; then
+    log_warn "no services running"
+    echo ""
+    echo "Run './golem start' to start services"
+    return 0
+  fi
+
+  dc_env ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+  echo ""
+
+  echo "=== Health Checks ==="
+  echo ""
+
+  if dc exec -T redis redis-cli ping &>/dev/null; then
+    log_ok "redis: healthy"
+  else
+    log_err "redis: unhealthy or not running"
+  fi
+
+  local scraper_port="${SCRAPER_PORT:-8083}"
+  if curl -sf "http://localhost:${scraper_port}/v1/health" >/dev/null 2>&1; then
+    log_ok "scraper: healthy (port ${scraper_port})"
+  else
+    log_err "scraper: unhealthy or not running"
+  fi
+
+  if curl -sf "http://localhost:3000" >/dev/null 2>&1; then
+    log_ok "observer: healthy (port 3000)"
+  else
+    log_err "observer: unhealthy or not running"
+  fi
+
+  if dc_env ps --status running --quiet golem 2>/dev/null | grep -q .; then
+    log_ok "golem: running"
+  else
+    log_warn "golem: not running"
+  fi
+
+  echo ""
+}
+
+cmd_logs() {
+  check_docker
+  check_env
+  load_env
+
+  local service="${1:-}"
+
+  if [[ -n "${service}" ]]; then
+    log_info "tailing logs for ${service}..."
+    dc_env logs -f "${service}"
+  else
+    log_info "tailing all logs..."
+    dc_env logs -f
+  fi
+}
+
+cmd_reset() {
+  check_docker
+
+  local confirm=""
+  for arg in "$@"; do
+    case "$arg" in
+      --confirm|-y) confirm="yes" ;;
+    esac
+  done
+
+  if [[ "${confirm}" != "yes" ]]; then
+    log_warn "this will DELETE all data including:"
+    echo "  - Redis data"
+    echo "  - Go build cache volume"
+    echo "  - tmp/ directory contents"
+    echo ""
+    echo "Run with --confirm to proceed:"
+    echo "  ./golem reset --confirm"
+    exit 1
+  fi
+
+  log_info "stopping services and removing volumes..."
+  dc down -v --remove-orphans
+
+  log_info "clearing tmp/ artifacts (tests, logs, screenshots)..."
+  rm -rf "${REPO_ROOT}/tmp/tests/"* "${REPO_ROOT}/tmp/logs/"* "${REPO_ROOT}/tmp/screenshots/"* 2>/dev/null || true
+
+  log_ok "reset complete"
+  log_info "run './golem start' to start fresh"
+}
+
+cmd_build() {
+  check_docker
+  check_env
+  load_env
+
+  log_info "building docker images..."
+  dc_env build
+  log_ok "build complete"
+}
+
+cmd_clean() {
+  check_docker
+
+  local confirm=""
+  for arg in "$@"; do
+    case "$arg" in
+      --confirm|-y) confirm="yes" ;;
+    esac
+  done
+
+  if [[ "${confirm}" != "yes" ]]; then
+    log_warn "this will remove:"
+    echo "  - All stopped golem containers"
+    echo "  - Dangling golem images"
+    echo "  - Build cache for golem services"
+    echo ""
+    echo "Run with --confirm to proceed:"
+    echo "  ./golem clean --confirm"
+    exit 1
+  fi
+
+  log_info "removing stopped containers..."
+  dc down --remove-orphans 2>/dev/null || true
+
+  log_info "pruning dangling images..."
+  docker image prune -f --filter "label=com.docker.compose.project=${PROJECT_NAME}" 2>/dev/null || true
+
+  log_info "pruning build cache..."
+  docker builder prune -f --filter "unused-for=24h" 2>/dev/null || true
+
+  log_ok "clean complete"
+}
+
+cleanup_old_runs() {
+  local harness="$1"
+  local keep="${2:-5}"
+  local dir="${REPO_ROOT}/tmp/tests/${harness}"
+
+  if [[ ! -d "${dir}" ]]; then
+    return 0
+  fi
+
+  local files
+  files=$(find "${dir}" -maxdepth 1 -name "*.json" -not -name "*_events.jsonl" | sort)
+  local count
+  count=$(echo "${files}" | grep -c . 2>/dev/null || echo 0)
+
+  if [[ ${count} -gt ${keep} ]]; then
+    local to_delete=$((count - keep))
+    log_info "cleaning up ${to_delete} old ${harness} run(s), keeping ${keep}..."
+    echo "${files}" | head -n "${to_delete}" | while read -r f; do
+      if [[ -n "${f}" && -f "${f}" ]]; then
+        local events_file="${f%.json}_events.jsonl"
+        rm -f "${f}" "${events_file}"
+      fi
+    done
+  fi
+}
+
+cmd_lint() {
+  if [[ -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
+    log_info "running go vet"
+    (cd "${REPO_ROOT}/apps/golem" && go vet ./...)
+    log_ok "go vet passed"
+  else
+    log_warn "apps/golem/go.mod not present; skipping lint"
+  fi
+
+  if [[ -f "${REPO_ROOT}/apps/observer/package.json" ]]; then
+    log_info "running eslint on observer"
+    (cd "${REPO_ROOT}/apps/observer" && bunx eslint .)
+    log_ok "eslint passed"
+  fi
+}
+
+cmd_test() {
+  if [[ -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
+    log_info "running go test"
+    (cd "${REPO_ROOT}/apps/golem" && go test ./...)
+    log_ok "go tests passed"
+  else
+    log_warn "apps/golem/go.mod not present; skipping go tests"
+  fi
+
+  if [[ -f "${REPO_ROOT}/apps/observer/package.json" ]]; then
+    log_info "running observer tests"
+    (cd "${REPO_ROOT}/apps/observer" && bun run test)
+    log_ok "observer tests passed"
+  fi
+}
+
+cmd_e2e() {
   check_go
   check_env
   load_env
   ensure_tmp
 
-  if [[ -f "${PID_FILE}" ]]; then
-    local existing_pid
-    existing_pid=$(<"${PID_FILE}")
-    if kill -0 "${existing_pid}" 2>/dev/null; then
-      log_warn "golem is already running (pid ${existing_pid})"
-      return
-    fi
-    rm -f "${PID_FILE}"
-  fi
+  local harness="${1:-thinking}"
+  local out_dir="${REPO_ROOT}/tmp/tests/${harness}"
+  mkdir -p "${out_dir}"
 
-  if [[ ! -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
-    log_err "apps/golem/go.mod not found; initialize the module first"
-    exit 1
-  fi
+  cleanup_old_runs "${harness}" 5
 
-  local log_file="${LOG_DIR}/golem-$(date +%Y%m%d-%H%M%S).log"
-  log_info "starting golem agent"
-  (cd "${REPO_ROOT}/apps/golem" && go run ./cmd/golem/main.go) > "${log_file}" 2>&1 &
-  local pid=$!
-  echo "${pid}" > "${PID_FILE}"
-  log_ok "golem started (pid ${pid}, log ${log_file})"
-}
-
-cmd_stop() {
-  if [[ ! -f "${PID_FILE}" ]]; then
-    log_warn "golem is not running (no pid file)"
-    return
-  fi
-
-  local pid
-  pid=$(<"${PID_FILE}")
-  if kill -0 "${pid}" 2>/dev/null; then
-    kill "${pid}"
-    log_ok "golem stopped (pid ${pid})"
-  else
-    log_warn "golem process ${pid} not found; cleaning up pid file"
-  fi
-  rm -f "${PID_FILE}"
-}
-
-cmd_status() {
-  if [[ ! -f "${PID_FILE}" ]]; then
-    echo "golem: not running"
-    return
-  fi
-
-  local pid
-  pid=$(<"${PID_FILE}")
-  if kill -0 "${pid}" 2>/dev/null; then
-    echo "golem: running (pid ${pid})"
-  else
-    echo "golem: not running (stale pid file)"
-    rm -f "${PID_FILE}"
-  fi
+  case "${harness}" in
+    thinking)
+      log_info "running thinking mode E2E harness"
+      (cd "${REPO_ROOT}/apps/golem" && OUTPUT_DIR="${out_dir}" go run ./cmd/thinking-test/main.go)
+      log_ok "thinking E2E complete -- output: ${out_dir}/"
+      ls -la "${out_dir}/"
+      ;;
+    agent)
+      local log_file="${out_dir}/agent_e2e_run.log"
+      local trace_file="${out_dir}/agent_otel_spans.json"
+      local prompt="${2:-}"
+      if [[ -z "${prompt}" ]]; then
+        prompt="Echo 'hello' to verify tool calling works, then list the available payload categories."
+      fi
+      log_info "running full agent E2E"
+      local e2e_rc=0
+      (cd "${REPO_ROOT}/apps/golem" && \
+        GOLEM_TRACE_FILE="${trace_file}" \
+        GOLEM_TRACE_CAPTURE_CONTENT=true \
+        go run ./cmd/golem/main.go "${prompt}") > "${log_file}" 2>&1 || e2e_rc=$?
+      if [[ "${e2e_rc}" -ne 0 ]]; then
+        log_err "agent E2E failed (exit code ${e2e_rc}) -- check ${log_file}"
+        ls -la "${out_dir}/"
+        exit "${e2e_rc}"
+      fi
+      log_ok "agent E2E complete -- output: ${out_dir}/"
+      ls -la "${out_dir}/"
+      ;;
+    level0)
+      local log_file="${out_dir}/level0_e2e.log"
+      local trace_file="${out_dir}/level0_otel_spans.json"
+      local prompt="Echo 'hello' to verify tool calling works, then list the available payload categories."
+      log_info "running level 0 E2E (echo + payload, no scraper required)"
+      local e2e_rc=0
+      (cd "${REPO_ROOT}/apps/golem" && \
+        GOLEM_TRACE_FILE="${trace_file}" \
+        GOLEM_TRACE_CAPTURE_CONTENT=true \
+        go run ./cmd/golem/main.go "${prompt}") > "${log_file}" 2>&1 || e2e_rc=$?
+      if [[ "${e2e_rc}" -ne 0 ]]; then
+        log_err "level 0 E2E failed (exit code ${e2e_rc}) -- check ${log_file}"
+        ls -la "${out_dir}/"
+        exit "${e2e_rc}"
+      fi
+      log_ok "level 0 E2E complete -- output: ${out_dir}/"
+      ls -la "${out_dir}/"
+      ;;
+    *)
+      log_err "unknown E2E harness: ${harness}"
+      echo "Available: thinking, agent, level0"
+      exit 1
+      ;;
+  esac
 }
 
 cmd_env_list() {
@@ -281,87 +609,31 @@ cmd_env_list() {
   done
 }
 
-cmd_build() {
-  check_go
-  if [[ ! -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
-    log_err "apps/golem/go.mod not found; initialize the module first"
-    exit 1
-  fi
-  log_info "building golem"
-  (cd "${REPO_ROOT}/apps/golem" && go build ./...)
-  log_ok "build complete"
-}
-
-cmd_lint() {
-  if [[ -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
-    log_info "running go vet"
-    (cd "${REPO_ROOT}/apps/golem" && go vet ./...)
-    log_ok "go vet passed"
-  else
-    log_warn "apps/golem/go.mod not present; skipping lint"
-  fi
-}
-
-cmd_test() {
-  if [[ -f "${REPO_ROOT}/apps/golem/go.mod" ]]; then
-    log_info "running go test"
-    (cd "${REPO_ROOT}/apps/golem" && go test ./...)
-    log_ok "tests passed"
-  else
-    log_warn "apps/golem/go.mod not present; skipping tests"
-  fi
-}
-
-cmd_e2e() {
-  check_go
-  check_env
-  load_env
-  ensure_tmp
-
-  local harness="${1:-thinking}"
-  local out_dir="${REPO_ROOT}/tmp/tests/${harness}"
-  mkdir -p "${out_dir}"
-
-  case "${harness}" in
-    thinking)
-      log_info "running thinking mode E2E harness"
-      (cd "${REPO_ROOT}/apps/golem" && OUTPUT_DIR="${out_dir}" go run ./cmd/thinking-test/main.go)
-      log_ok "thinking E2E complete -- output: ${out_dir}/"
-      ls -la "${out_dir}/"
-      ;;
-    agent)
-      local log_file="${out_dir}/agent_e2e_run.log"
-      local trace_file="${out_dir}/agent_otel_spans.json"
-      local prompt="${2:-}"
-      if [[ -z "${prompt}" ]]; then
-        prompt="Echo 'hello' to verify tool calling works, then list the available payload categories."
-      fi
-      log_info "running full agent E2E"
-      (cd "${REPO_ROOT}/apps/golem" && \
-        GOLEM_TRACE_FILE="${trace_file}" \
-        GOLEM_TRACE_CAPTURE_CONTENT=true \
-        go run ./cmd/golem/main.go "${prompt}") > "${log_file}" 2>&1 || true
-      log_ok "agent E2E complete -- output: ${out_dir}/"
-      ls -la "${out_dir}/"
-      ;;
-    *)
-      log_err "unknown E2E harness: ${harness}"
-      echo "Available: thinking, agent"
-      exit 1
-      ;;
-  esac
-}
+# =============================================================================
+# Main
+# =============================================================================
 
 main() {
-  local cmd="${1:-help}"
-  shift || true
+  if [[ $# -lt 1 ]]; then
+    usage
+    exit 1
+  fi
+
+  local cmd="$1"
+  shift
 
   case "${cmd}" in
     start) cmd_start "$@" ;;
-    stop) cmd_stop "$@" ;;
-    restart) cmd_stop && cmd_start ;;
+    stop) cmd_stop ;;
+    restart) cmd_restart "$@" ;;
     status) cmd_status ;;
+    logs) cmd_logs "$@" ;;
+    reset) cmd_reset "$@" ;;
+    clean) cmd_clean "$@" ;;
     build) cmd_build ;;
+    lint) cmd_lint ;;
+    test) cmd_test ;;
+    e2e) cmd_e2e "$@" ;;
     env)
       local sub="${1:-}"
       if [[ "${sub}" == "list" ]]; then
@@ -371,9 +643,6 @@ main() {
         exit 1
       fi
       ;;
-    lint) cmd_lint ;;
-    test) cmd_test ;;
-    e2e) cmd_e2e "$@" ;;
     help|-h|--help) usage ;;
     *)
       log_err "unknown command: ${cmd}"

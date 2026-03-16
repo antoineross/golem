@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -37,6 +38,14 @@ func main() {
 				slog.Warn("OTel shutdown error", "error", err)
 			}
 		}()
+	}
+
+	tw, err := golemAdk.NewTraceWriter(otelCfg.TraceFile)
+	if err != nil {
+		slog.Warn("trace writer setup failed", "error", err)
+	} else if tw != nil {
+		defer tw.Close()
+		slog.Info("trace event writer enabled", "path", tw.Path())
 	}
 
 	llmCfg := golemAdk.LoadLLMConfig()
@@ -102,9 +111,17 @@ func main() {
 	slog.Info("starting agent run", "prompt", prompt)
 
 	msg := genai.NewContentFromText(prompt, genai.RoleUser)
+
+	tw.Write(golemAdk.TraceEvent{
+		Type:         "user_prompt",
+		Agent:        "golem_auditor",
+		ResponseText: prompt,
+	})
+
 	for event, err := range r.Run(ctx, resp.Session.UserID(), resp.Session.ID(), msg, agent.RunConfig{}) {
 		if err != nil {
 			slog.Error("agent error", "error", err)
+			tw.Write(golemAdk.TraceEvent{Type: "error", ResponseText: err.Error()})
 			break
 		}
 
@@ -114,16 +131,30 @@ func main() {
 
 		for _, part := range event.Content.Parts {
 			if part.FunctionCall != nil {
+				argsJSON := marshalArgs(part.FunctionCall.Args)
 				slog.Info("tool call",
 					"tool", part.FunctionCall.Name,
 					"args", part.FunctionCall.Args,
 				)
+				tw.Write(golemAdk.TraceEvent{
+					Type:     "tool_call",
+					ToolName: part.FunctionCall.Name,
+					ToolArgs: argsJSON,
+				})
 			}
 			if part.FunctionResponse != nil {
+				respJSON := marshalArgs(part.FunctionResponse.Response)
 				slog.Info("tool response",
 					"tool", part.FunctionResponse.Name,
 					"result", part.FunctionResponse.Response,
 				)
+				screenshotURL := extractScreenshotURL(part.FunctionResponse.Name, respJSON)
+				tw.Write(golemAdk.TraceEvent{
+					Type:          "tool_response",
+					ToolName:      part.FunctionResponse.Name,
+					ToolResponse:  respJSON,
+					ScreenshotURL: screenshotURL,
+				})
 			}
 			if part.Thought && part.Text != "" {
 				slog.Debug("model thought detail",
@@ -131,21 +162,32 @@ func main() {
 					"text", truncateRunes(part.Text, 500),
 				)
 				slog.Info("model thought received", "text_len", len(part.Text))
+				tw.Write(golemAdk.TraceEvent{
+					Type:        "thought",
+					ThoughtText: part.Text,
+				})
 				continue
 			}
 			if part.Text != "" {
-				if event.IsFinalResponse() {
+				isFinal := event.IsFinalResponse()
+				if isFinal {
 					fmt.Println("\n--- AGENT RESPONSE ---")
 					fmt.Println(part.Text)
 					fmt.Println("--- END ---")
 				} else {
 					slog.Info("agent intermediate", "text", part.Text)
 				}
+				tw.Write(golemAdk.TraceEvent{
+					Type:         "llm_response",
+					ResponseText: part.Text,
+					IsFinal:      isFinal,
+				})
 			}
 		}
 	}
 
 	slog.Info("agent run complete")
+	tw.Write(golemAdk.TraceEvent{Type: "run_complete"})
 }
 
 func defaultPrompt(hasBrowse bool) string {
@@ -197,4 +239,26 @@ func truncateRunes(s string, maxRunes int) string {
 		return s
 	}
 	return string(runes[:maxRunes]) + "..."
+}
+
+func marshalArgs(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(b)
+}
+
+func extractScreenshotURL(toolName, respJSON string) string {
+	if toolName != "screenshot" && toolName != "click" {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(respJSON), &m); err != nil {
+		return ""
+	}
+	if u, ok := m["screenshot_url"].(string); ok {
+		return u
+	}
+	return ""
 }

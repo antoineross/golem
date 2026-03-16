@@ -23,11 +23,15 @@ type OtelConfig struct {
 }
 
 // LoadOtelConfig reads OTel settings from environment.
+// CaptureContent defaults to true when a TraceFile is set, since requesting
+// a trace file implies the user wants observability data.
 func LoadOtelConfig() OtelConfig {
+	traceFile := os.Getenv("GOLEM_TRACE_FILE")
+	defaultCapture := traceFile != ""
 	return OtelConfig{
-		TraceFile:      os.Getenv("GOLEM_TRACE_FILE"),
+		TraceFile:      traceFile,
 		EnableConsole:  envBool("GOLEM_TRACE_CONSOLE", false),
-		CaptureContent: envBool("GOLEM_TRACE_CAPTURE_CONTENT", false),
+		CaptureContent: envBool("GOLEM_TRACE_CAPTURE_CONTENT", defaultCapture),
 	}
 }
 

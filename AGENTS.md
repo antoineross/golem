@@ -32,6 +32,12 @@ Monorepo layout:
   - E-commerce demo with 8 planted security flaws (IDOR, privilege escalation, hidden elements, client-side logic bypass)
   - Used as proof target for Gemini Live Agent Challenge submission
   - Contains deliberate vulnerabilities -- do not apply security fixes
+- `apps/observer/` -- Vite + React + TypeScript observability dashboard
+  - Visualizes OTel span traces and thinking-test traces from the agent
+  - Hono backend with SSE for live trace streaming
+  - Scenario launcher for triggering agent runs from the UI
+  - Replay mode for pre-recorded trace playback at configurable speed
+  - Run: `cd apps/observer && bun install && bun run dev:all`
 
 Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusive. Because this agent uses tools, structured output must use the Regex Parser pattern.
 
@@ -104,7 +110,7 @@ Tool registration is graceful: if `SUPACRAWL_API_URL` is not set or the scraper 
 
 Required variables:
 - `GOOGLE_API_KEY` (or `GEMINI_API_KEY` as fallback)
-- `SUPACRAWL_API_URL` (local: `http://localhost:8082`, docker: `http://scraper:8081`)
+- `SUPACRAWL_API_URL` (local: `http://localhost:8083`, docker: `http://scraper:8081`)
 
 Optional variables:
 - `DEFAULT_LLM_MODEL` (default: gemini-3-flash-preview)
@@ -117,16 +123,54 @@ Optional variables:
 
 ## local development
 
-Always use `./golem` commands. Do not bypass with raw commands for normal workflows.
+The `./golem` CLI is a docker compose orchestrator. It manages env file loading, service lifecycle, and health checks. All services run in Docker containers.
+
+```bash
+cp .env.example .env.local    # fill in API keys
+./golem env list               # verify config
+./golem start                  # start all services (detached)
+./golem status                 # check service health
+./golem logs                   # tail all logs
+./golem logs golem             # tail golem agent logs only
+./golem stop                   # stop all services
+```
+
+Never bypass the wrapper with raw docker compose commands. The wrapper handles env file selection (`--env-file`), project naming, and consistent behavior.
+
+**Process management**: Always use `./golem stop` to shut down services. Never use `kill -9`, `lsof | xargs kill`, or similar signals to stop golem or its Docker services -- this can corrupt containers and break other running Docker services (e.g. nanowhale). The `./golem stop` command runs `docker compose down` which cleanly shuts down only golem's containers.
 
 | Do this | Not this |
 |---------|----------|
-| `./golem start` | `go run cmd/golem/main.go` |
+| `./golem start` | `docker compose up -d` |
+| `./golem build` | `docker compose build` |
+| `./golem stop` | `docker compose down` |
+| `./golem logs golem` | `docker logs golem-golem-1` |
+| `./golem start --observer` | `docker compose up -d observer` |
 | `./golem env list` | `cat .env` |
-| `./golem status` | manual process inspection |
-| `./golem stop` | manual kill |
+| `./golem e2e level0` | manual go run with env vars |
 
-Reason: the wrapper enforces env-file selection, logging, and consistent local behavior.
+### services
+
+| Service | Host Port | Description |
+|---------|-----------|-------------|
+| redis | 6380 | Task queue and caching |
+| scraper | 8083 | Supacrawler perception layer (LightPanda browser) |
+| golem | 8081 | Agent (ADK-Go, hot-reload via Air) |
+| observer | 3000 | Trace visualization UI (Vite + Hono) |
+
+Ports are configurable via env vars (`REDIS_PORT`, `SCRAPER_PORT`, `GOLEM_PORT`). Defaults are chosen to avoid collisions with other local services.
+
+### start options
+
+- `./golem start` -- start all services
+- `./golem start -t` -- start and tail logs
+- `./golem start --no-build` -- skip image rebuild
+- `./golem start --scraper` -- start redis + scraper only
+- `./golem start --observer` -- start observer only
+
+### reset
+
+`./golem reset --confirm` stops services, removes Docker volumes, and clears `tmp/` artifacts. Use for a clean slate.
 
 ## coding standards
 
@@ -286,9 +330,31 @@ Test tool functions end-to-end with mock HTTP servers simulating the scraper API
 
 ADK `tool.Context` cannot be constructed outside the ADK internals, so tool invocation through `tool.Run()` is not testable without the full ADK runner. Instead, test at the client level with realistic arg patterns matching what tools would send.
 
-### level 3: E2E tests (deferred to v0.6)
+### level 3: E2E tests
 
-Test the full agent loop: real Gemini API + real/mock scraper + runner event loop. Requires `GOOGLE_API_KEY` and a running scraper service. These are manual smoke tests documented in `tmp/tests/`.
+Test the full agent loop: real Gemini API + real/mock scraper + runner event loop. Requires `GOOGLE_API_KEY`. Run via `./golem e2e <harness>`.
+
+#### E2E harnesses
+
+| Harness | Command | Requires | What it tests |
+|---------|---------|----------|--------------|
+| `thinking` | `./golem e2e thinking` | `GOOGLE_API_KEY` | Thinking mode at LOW/MEDIUM levels, trace output |
+| `agent` | `./golem e2e agent [prompt]` | `GOOGLE_API_KEY` | Full agent loop with tools, custom prompt |
+| `level0` | `./golem e2e level0` | `GOOGLE_API_KEY` | Echo + payload tools only (no scraper needed) |
+
+Output goes to `tmp/tests/<harness>/`. Each run produces:
+- `*_e2e.log` -- agent stdout/stderr
+- `*_otel_spans.json` -- OTel trace file for observer visualization
+
+#### observer tests
+
+The observer app (`apps/observer/`) has its own test suite:
+
+```bash
+cd apps/observer && bun run test     # 59 unit tests (vitest)
+cd apps/observer && bun run lint     # eslint
+cd apps/observer && bun run build    # tsc + vite build
+```
 
 ### PR test documentation
 
