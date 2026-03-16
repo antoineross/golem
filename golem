@@ -337,10 +337,16 @@ cmd_e2e() {
         prompt="Echo 'hello' to verify tool calling works, then list the available payload categories."
       fi
       log_info "running full agent E2E"
+      local e2e_rc=0
       (cd "${REPO_ROOT}/apps/golem" && \
         GOLEM_TRACE_FILE="${trace_file}" \
         GOLEM_TRACE_CAPTURE_CONTENT=true \
-        go run ./cmd/golem/main.go "${prompt}") > "${log_file}" 2>&1 || true
+        go run ./cmd/golem/main.go "${prompt}") > "${log_file}" 2>&1 || e2e_rc=$?
+      if [[ "${e2e_rc}" -ne 0 ]]; then
+        log_err "agent E2E failed (exit code ${e2e_rc}) -- check ${log_file}"
+        ls -la "${out_dir}/"
+        exit "${e2e_rc}"
+      fi
       log_ok "agent E2E complete -- output: ${out_dir}/"
       ls -la "${out_dir}/"
       ;;

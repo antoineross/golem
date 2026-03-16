@@ -51,6 +51,17 @@ services:
       - golem-go-cache:/go/pkg
     restart: unless-stopped
 
+  observer:
+    build: apps/observer
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./tmp:/data/tmp:ro
+    environment:
+      - TRACE_DIR=/data/tmp/tests
+      - SCREENSHOT_DIR=/data/tmp/screenshots
+    restart: unless-stopped
+
 volumes:
   redis-data:
   golem-go-cache:
