@@ -463,10 +463,10 @@ export function mergeCompanionEvents(
     }
     if (ce.type === "llm_response_meta") {
       const parts: string[] = [];
-      if (ce.input_tokens) parts.push(`Input: ${ce.input_tokens.toLocaleString()} tok`);
-      if (ce.output_tokens) parts.push(`Output: ${ce.output_tokens.toLocaleString()} tok`);
-      if (ce.think_tokens) parts.push(`Thinking: ${ce.think_tokens.toLocaleString()} tok`);
-      if (ce.duration_ms) parts.push(`Duration: ${ce.duration_ms}ms`);
+      if (ce.input_tokens != null) parts.push(`Input: ${ce.input_tokens.toLocaleString()} tok`);
+      if (ce.output_tokens != null) parts.push(`Output: ${ce.output_tokens.toLocaleString()} tok`);
+      if (ce.think_tokens != null) parts.push(`Thinking: ${ce.think_tokens.toLocaleString()} tok`);
+      if (ce.duration_ms != null) parts.push(`Duration: ${ce.duration_ms}ms`);
       if (parts.length > 0) {
         merged.events.push({
           id: `llm-meta-${ci}`,
@@ -475,7 +475,7 @@ export function mergeCompanionEvents(
           timestamp: ce.timestamp,
           text: parts.join("\n"),
           model: ce.model,
-          tokens: ce.input_tokens
+          tokens: ce.input_tokens != null
             ? { input: ce.input_tokens, output: ce.output_tokens ?? 0, thoughts: ce.think_tokens }
             : undefined,
           duration_ms: ce.duration_ms,

@@ -187,12 +187,22 @@ func extractPromptText(req *model.LLMRequest) string {
 				parts = append(parts, fmt.Sprintf("[%s] %s", role, part.Text))
 			}
 			if part.FunctionCall != nil {
-				args, _ := json.Marshal(part.FunctionCall.Args)
-				parts = append(parts, fmt.Sprintf("[%s] call:%s(%s)", role, part.FunctionCall.Name, string(args)))
+				args, err := json.Marshal(part.FunctionCall.Args)
+				if err != nil {
+					slog.Warn("failed to marshal function call args", "function", part.FunctionCall.Name, "error", err)
+					parts = append(parts, fmt.Sprintf("[%s] call:%s(MARSHAL_ERROR)", role, part.FunctionCall.Name))
+				} else {
+					parts = append(parts, fmt.Sprintf("[%s] call:%s(%s)", role, part.FunctionCall.Name, string(args)))
+				}
 			}
 			if part.FunctionResponse != nil {
-				resp, _ := json.Marshal(part.FunctionResponse.Response)
-				parts = append(parts, fmt.Sprintf("[%s] result:%s -> %s", role, part.FunctionResponse.Name, truncateString(string(resp), 500)))
+				resp, err := json.Marshal(part.FunctionResponse.Response)
+				if err != nil {
+					slog.Warn("failed to marshal function response", "function", part.FunctionResponse.Name, "error", err)
+					parts = append(parts, fmt.Sprintf("[%s] result:%s -> MARSHAL_ERROR", role, part.FunctionResponse.Name))
+				} else {
+					parts = append(parts, fmt.Sprintf("[%s] result:%s -> %s", role, part.FunctionResponse.Name, truncateString(string(resp), 500)))
+				}
 			}
 		}
 	}
@@ -200,8 +210,12 @@ func extractPromptText(req *model.LLMRequest) string {
 }
 
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if maxLen <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }

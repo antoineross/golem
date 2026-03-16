@@ -122,7 +122,6 @@ func TestCallbacksWriteToTraceWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTraceWriter: %v", err)
 	}
-	defer tw.Close()
 
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 	cb := NewCallbacks(logger, tw, "test-model")
@@ -135,7 +134,9 @@ func TestCallbacksWriteToTraceWriter(t *testing.T) {
 	}
 
 	tw.Write(TraceEvent{Type: "test_event", Agent: "test"})
-	tw.Close()
+	if err := tw.Close(); err != nil {
+		t.Fatalf("tw.Close: %v", err)
+	}
 
 	data, err := os.ReadFile(tw.Path())
 	if err != nil {

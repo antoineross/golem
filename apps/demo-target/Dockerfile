@@ -28,4 +28,4 @@ USER nextjs
 EXPOSE 4000
 ENV PORT=4000
 ENV HOSTNAME=0.0.0.0
-CMD ["bun", "run", "server.js"]
+CMD ["bun", "server.js"]

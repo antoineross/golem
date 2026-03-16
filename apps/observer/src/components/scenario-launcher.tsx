@@ -68,7 +68,7 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [onRunComplete]);
 
   const runScenario = async (scenarioKey: string) => {
     try {

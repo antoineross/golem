@@ -288,7 +288,7 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     harness: "level1a",
     description: "Find the floating action button (FAB), click it, read support chat history, extract leaked credentials and hidden URLs, then use them to gain access.",
     prompt: `You are auditing ${DEMO_TARGET_URL}. Find the FAB, click it, read the chat, extract credentials and hidden URLs, navigate to the discovered URL and use credentials to gain access.`,
-    tools: ["echo", "payload", "browse", "screenshot", "click"],
+    tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
     requires_scraper: true,
   },
   level1b: {
@@ -296,7 +296,7 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     harness: "level1b",
     description: "Navigate to /system-health, take a screenshot, analyze canvas-rendered alerts for hidden API endpoints, then call those endpoints to check for data leaks.",
     prompt: `You are auditing ${DEMO_TARGET_URL}. Navigate to ${DEMO_TARGET_URL}/system-health, screenshot the page, analyze visual content for hidden API endpoints, then call them.`,
-    tools: ["echo", "payload", "browse", "screenshot"],
+    tools: ["echo", "payload", "browse", "screenshot", "find_hidden"],
     requires_scraper: true,
   },
   level2: {
@@ -304,15 +304,15 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     harness: "level2",
     description: "Navigate to /admin, find the 'Delete Database' button blocked by a modal popup. Close the modal first, then interact with the delete button.",
     prompt: `You are auditing ${DEMO_TARGET_URL}. Navigate to ${DEMO_TARGET_URL}/admin, find the Delete Database button, close the blocking modal, click delete, and report findings.`,
-    tools: ["echo", "payload", "browse", "screenshot", "click"],
+    tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
     requires_scraper: true,
   },
   agent: {
     name: "Full Agent Run",
     harness: "agent",
-    description: "Runs the full security auditor agent against the default target. Uses all tools via the Supacrawl scraper.",
+    description: "Runs the full security auditor agent against the default target. Uses all available tools via the Supacrawl scraper.",
     prompt: "Browse https://example.com and describe what you see.",
-    tools: ["echo", "payload", "browse", "screenshot", "click"],
+    tools: ["echo", "payload", "browse", "screenshot", "click", "find_hidden"],
     requires_scraper: true,
   },
 };
