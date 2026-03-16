@@ -358,11 +358,15 @@ func (s *Service) save(data []byte, r Request) (string, string, error) {
 	}
 
 LOCAL:
-	_ = os.MkdirAll(filepath.Join(s.cfg.DataDir, "screenshots"), 0o755)
-	name := time.Now().Format("20060102_150405") + "_" + sanitize(r.Url) + ".png"
-	path := filepath.Join(s.cfg.DataDir, "screenshots", name)
+	dir := filepath.Join(s.cfg.DataDir, "screenshots")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", "", fmt.Errorf("create screenshot directory %s: %w", dir, err)
+	}
+	ext := strings.ToLower(s.getString((*string)(r.Format), "png"))
+	name := time.Now().Format("20060102_150405") + "_" + utils.UUIDv4()[:8] + "_" + sanitize(r.Url) + "." + ext
+	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("write screenshot %s: %w", path, err)
 	}
 	return path, "/files/screenshots/" + name, nil
 }
