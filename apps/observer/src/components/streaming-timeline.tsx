@@ -18,12 +18,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import type { StreamState } from "@/types/streaming";
+import type { StreamState, StreamingLlmCall } from "@/types/streaming";
 import { SignalIcon } from "@heroicons/react/20/solid";
 
 import { StreamStatusBanner } from "@/components/streaming/stream-status-banner";
-import { LlmCallCard } from "@/components/streaming/llm-call-card";
-import { StreamingToolCallItem } from "@/components/streaming/streaming-tool-call-item";
+import { LlmCallTree } from "@/components/streaming/llm-call-tree";
 
 interface StreamingTimelineProps {
   state: StreamState;
@@ -38,9 +37,7 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
         <CardContent className="text-center py-16 text-muted-foreground">
           <SignalIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg">Waiting for agent stream</p>
-          <p className="text-sm mt-1">
-            Run a scenario to see events appear in real-time
-          </p>
+          <p className="text-sm mt-1">Run a scenario to see events appear in real-time</p>
         </CardContent>
       </Card>
     );
@@ -53,16 +50,11 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
     ? state.responses[state.responses.length - 1]
     : null;
 
-  type TimelineItem =
-    | { kind: "thought"; idx: number; ts: string }
-    | { kind: "llm_call"; idx: number; ts: string }
-    | { kind: "tool_call"; idx: number; ts: string };
-
-  const items: TimelineItem[] = [];
-  state.thoughts.forEach((t, i) => items.push({ kind: "thought", idx: i, ts: t.timestamp }));
-  state.llmCalls.forEach((lc, i) => items.push({ kind: "llm_call", idx: i, ts: lc.timestamp }));
-  state.toolCalls.forEach((tc, i) => items.push({ kind: "tool_call", idx: i, ts: tc.timestamp }));
-  items.sort((a, b) => a.ts.localeCompare(b.ts));
+  const orphanThoughts = state.thoughts.filter((_, i) => {
+    const ts = state.thoughts[i]!.timestamp;
+    const firstLlm = state.llmCalls[0];
+    return !firstLlm || ts < firstLlm.timestamp;
+  });
 
   return (
     <div className="space-y-3">
@@ -75,6 +67,7 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
           size="sm"
           onClick={() => setAutoScroll(!autoScroll)}
           className="shrink-0"
+          aria-label={autoScroll ? "Disable auto-scroll" : "Enable auto-scroll"}
         >
           {autoScroll ? "Auto-scroll On" : "Auto-scroll Off"}
         </Button>
@@ -90,26 +83,23 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
             </Message>
           )}
 
-          {items.map((item) => {
-            if (item.kind === "thought") {
-              const thought = state.thoughts[item.idx]!;
-              return (
-                <Reasoning key={`thought-${item.idx}`} isStreaming={thought.isStreaming}>
-                  <ReasoningTrigger />
-                  <ReasoningContent>{thought.text}</ReasoningContent>
-                </Reasoning>
-              );
-            }
-            if (item.kind === "llm_call") {
-              const call = state.llmCalls[item.idx]!;
-              return <LlmCallCard key={call.id} call={call} />;
-            }
-            if (item.kind === "tool_call") {
-              const tc = state.toolCalls[item.idx]!;
-              return <StreamingToolCallItem key={tc.id} toolCall={tc} />;
-            }
-            return null;
-          })}
+          {orphanThoughts.map((thought, i) => (
+            <Reasoning key={`orphan-thought-${i}`} isStreaming={thought.isStreaming}>
+              <ReasoningTrigger />
+              <ReasoningContent>{thought.text}</ReasoningContent>
+            </Reasoning>
+          ))}
+
+          {state.llmCalls.map((call: StreamingLlmCall, i: number) => (
+            <LlmCallTree
+              key={call.id}
+              call={call}
+              toolCalls={state.toolCalls.filter((tc) => tc.parentLlmCallId === call.id)}
+              thoughts={getThoughtsForLlmCall(state, call, i)}
+              isFirstCall={i === 0}
+              isStreaming={isStreaming}
+            />
+          ))}
 
           {isStreaming && !hasThoughtsStreaming && state.toolCalls.length === 0 && state.thoughts.length === 0 && !state.userPrompt && (
             <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
@@ -129,9 +119,7 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
             <Message from="assistant">
               <MessageContent>
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="text-[10px]">
-                    intermediate
-                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">intermediate</Badge>
                 </div>
                 <MessageResponse>{lastResponse.text}</MessageResponse>
               </MessageContent>
@@ -148,4 +136,17 @@ export function StreamingTimeline({ state }: StreamingTimelineProps) {
       </Conversation>
     </div>
   );
+}
+
+function getThoughtsForLlmCall(
+  state: StreamState,
+  call: StreamingLlmCall,
+  callIdx: number
+): Array<{ text: string; isStreaming: boolean; timestamp: string }> {
+  const nextCall = state.llmCalls[callIdx + 1];
+  return state.thoughts.filter((t) => {
+    if (t.timestamp < call.timestamp) return false;
+    if (nextCall && t.timestamp >= nextCall.timestamp) return false;
+    return true;
+  });
 }

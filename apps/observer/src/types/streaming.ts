@@ -50,6 +50,7 @@ export interface StreamingToolCall {
   response?: string;
   screenshotUrl?: string;
   screenshotPending?: boolean;
+  parentLlmCallId?: string;
   timestamp: string;
 }
 
@@ -187,12 +188,14 @@ export function reduceStreamEvent(
 
     case "tool_call": {
       const isScreenshotTool = event.tool_name === "screenshot" || event.tool_name === "click";
+      const lastLlmCall = [...state.llmCalls].reverse().find((lc) => lc.state === "pending");
       const toolCall: StreamingToolCall = {
         id: `tool-${next.toolCalls.length}`,
         name: event.tool_name ?? "unknown",
         args: event.tool_args ?? "{}",
         state: "input-available",
         screenshotPending: isScreenshotTool,
+        parentLlmCallId: lastLlmCall?.id,
         timestamp: event.timestamp,
       };
       next.toolCalls = [...state.toolCalls, toolCall];
