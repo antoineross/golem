@@ -34,7 +34,7 @@ services:
   demo-target:
     build: ./apps/demo-target
     ports:
-      - "${DEMO_TARGET_PORT:-4000}:3000"
+      - "${DEMO_TARGET_PORT:-4000}:4000"
     restart: unless-stopped
 
   golem:
