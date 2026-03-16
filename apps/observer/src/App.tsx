@@ -11,10 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { SummaryHeader } from "@/components/summary-header";
 import { Timeline } from "@/components/timeline";
+import { StreamingTimeline } from "@/components/streaming-timeline";
 import { RawJsonView } from "@/components/raw-json-view";
 import { ScenarioLauncher } from "@/components/scenario-launcher";
 import { ReplayControls } from "@/components/replay-controls";
 import { useTraceList, useTrace, useTraceSSE } from "@/hooks/use-traces";
+import { useAgentStream } from "@/hooks/use-agent-stream";
 import type { TraceSummary, TimelineEvent, TraceFile } from "@/types/trace";
 import {
   EyeIcon,
@@ -119,6 +121,7 @@ export default function App() {
   const [liveRaw, setLiveRaw] = useState<string | null>(null);
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [liveTraceFile, setLiveTraceFile] = useState<string | null>(null);
+  const [streamMode, setStreamMode] = useState(false);
   const [replayMode, setReplayMode] = useState(false);
   const [replayEvents, setReplayEvents] = useState<TimelineEvent[]>([]);
   const [mainView, setMainView] = useState<MainView>("timeline");
@@ -128,7 +131,18 @@ export default function App() {
     setLiveRaw(r);
   }, []);
 
-  useTraceSSE(handleSSE, liveEnabled, liveTraceFile);
+  useTraceSSE(handleSSE, liveEnabled && !streamMode, liveTraceFile);
+
+  const handleStreamComplete = useCallback(() => {
+    setStreamMode(false);
+    setLiveEnabled(false);
+    refreshFiles();
+  }, [refreshFiles]);
+
+  const { state: streamState, reset: resetStream } = useAgentStream({
+    enabled: streamMode,
+    onComplete: handleStreamComplete,
+  });
 
   const activeTrace = liveEnabled && liveTrace ? liveTrace : trace;
   const activeRaw = liveEnabled && liveRaw ? liveRaw : raw;
@@ -137,13 +151,16 @@ export default function App() {
     setSelectedFile(path);
     setLiveEnabled(false);
     setLiveTraceFile(null);
+    setStreamMode(false);
     setReplayMode(false);
     setMainView("timeline");
   };
 
   const handleRunStarted = (traceFile: string) => {
     setLiveTraceFile(traceFile);
-    setLiveEnabled(true);
+    resetStream();
+    setStreamMode(true);
+    setLiveEnabled(false);
     setLiveTrace(null);
     setLiveRaw(null);
     setReplayMode(false);
@@ -200,10 +217,14 @@ export default function App() {
               <TooltipTrigger
                 render={
                   <Button
-                    variant={liveEnabled ? "secondary" : "outline"}
+                    variant={liveEnabled || streamMode ? "secondary" : "outline"}
                     size="sm"
                     onClick={() => {
-                      setLiveEnabled(!liveEnabled);
+                      if (streamMode) {
+                        setStreamMode(false);
+                      } else {
+                        setLiveEnabled(!liveEnabled);
+                      }
                       setReplayMode(false);
                     }}
                     aria-label="Toggle live mode"
@@ -211,12 +232,14 @@ export default function App() {
                 }
               >
                 <SignalIcon
-                  className={`h-3.5 w-3.5 ${liveEnabled ? "text-green-400 animate-pulse" : ""}`}
+                  className={`h-3.5 w-3.5 ${liveEnabled || streamMode ? "text-green-400 animate-pulse" : ""}`}
                 />
-                {liveEnabled ? "Live" : "Live Off"}
+                {streamMode ? "Streaming" : liveEnabled ? "Live" : "Live Off"}
               </TooltipTrigger>
               <TooltipContent>
-                Stream trace updates in real-time
+                {streamMode
+                  ? "Real-time agent event stream active"
+                  : "Stream trace updates in real-time"}
               </TooltipContent>
             </Tooltip>
 
@@ -290,67 +313,73 @@ export default function App() {
 
         <main className="flex-1 min-w-0 overflow-auto">
           <div className="max-w-[1400px] mx-auto px-6 py-4 space-y-4">
-            {loading && (
-              <div className="space-y-4">
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-64 w-full" />
-              </div>
-            )}
-
-            {error && (
-              <div className="rounded border border-destructive bg-destructive/10 p-4 text-destructive text-sm">
-                Failed to load trace: {error}
-              </div>
-            )}
-
-            {activeTrace && (
+            {streamMode ? (
+              <StreamingTimeline state={streamState} />
+            ) : (
               <>
-                <SummaryHeader trace={activeTrace} />
-
-                {replayMode && (
-                  <ReplayControls
-                    events={activeTrace.events}
-                    onVisibleEvents={handleReplayEvents}
-                  />
+                {loading && (
+                  <div className="space-y-4">
+                    <Skeleton className="h-20 w-full" />
+                    <Skeleton className="h-64 w-full" />
+                  </div>
                 )}
 
-                <div className="flex items-center gap-1 border-b border-border pb-2">
-                  <Button
-                    variant={mainView === "timeline" ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => setMainView("timeline")}
-                  >
-                    Timeline
-                  </Button>
-                  <Button
-                    variant={mainView === "raw" ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => setMainView("raw")}
-                  >
-                    Raw JSON
-                  </Button>
-                </div>
-
-                {mainView === "timeline" && (
-                  <Timeline events={displayEvents} />
+                {error && (
+                  <div className="rounded border border-destructive bg-destructive/10 p-4 text-destructive text-sm">
+                    Failed to load trace: {error}
+                  </div>
                 )}
-                {mainView === "raw" && <RawJsonView raw={activeRaw} />}
+
+                {activeTrace && (
+                  <>
+                    <SummaryHeader trace={activeTrace} />
+
+                    {replayMode && (
+                      <ReplayControls
+                        events={activeTrace.events}
+                        onVisibleEvents={handleReplayEvents}
+                      />
+                    )}
+
+                    <div className="flex items-center gap-1 border-b border-border pb-2">
+                      <Button
+                        variant={mainView === "timeline" ? "secondary" : "ghost"}
+                        size="sm"
+                        onClick={() => setMainView("timeline")}
+                      >
+                        Timeline
+                      </Button>
+                      <Button
+                        variant={mainView === "raw" ? "secondary" : "ghost"}
+                        size="sm"
+                        onClick={() => setMainView("raw")}
+                      >
+                        Raw JSON
+                      </Button>
+                    </div>
+
+                    {mainView === "timeline" && (
+                      <Timeline events={displayEvents} />
+                    )}
+                    {mainView === "raw" && <RawJsonView raw={activeRaw} />}
+                  </>
+                )}
+
+                {!loading && !error && !activeTrace && (
+                  <Card>
+                    <CardContent className="text-center py-16 text-muted-foreground">
+                      <EyeIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                      <p className="text-lg">
+                        Select a trace or run a scenario
+                      </p>
+                      <p className="text-sm mt-1">
+                        Pick from the sidebar, or use the launcher to start an
+                        agent run
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
               </>
-            )}
-
-            {!loading && !error && !activeTrace && (
-              <Card>
-                <CardContent className="text-center py-16 text-muted-foreground">
-                  <EyeIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                  <p className="text-lg">
-                    Select a trace or run a scenario
-                  </p>
-                  <p className="text-sm mt-1">
-                    Pick from the sidebar, or use the launcher to start an
-                    agent run
-                  </p>
-                </CardContent>
-              </Card>
             )}
           </div>
         </main>

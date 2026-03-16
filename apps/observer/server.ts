@@ -223,6 +223,87 @@ app.get("/api/traces/stream", (c) => {
   });
 });
 
+app.get("/api/agent/stream", (c) => {
+  return streamSSE(c, async (stream) => {
+    let offset = 0;
+    let running = true;
+    let idleCount = 0;
+    const MAX_IDLE = 600; // 2 minutes at 200ms intervals
+
+    stream.onAbort(() => {
+      running = false;
+    });
+
+    const eventsPath = agentTraceFile
+      ? eventsPathForTrace(agentTraceFile)
+      : null;
+
+    await stream.writeSSE({
+      data: JSON.stringify({
+        type: "stream_start",
+        trace_file: agentTraceFile,
+        events_path: eventsPath,
+        status: agentStatus,
+      }),
+      event: "control",
+    });
+
+    while (running) {
+      const currentEventsPath = agentTraceFile
+        ? eventsPathForTrace(agentTraceFile)
+        : null;
+
+      if (currentEventsPath && fs.existsSync(currentEventsPath)) {
+        try {
+          const content = fs.readFileSync(currentEventsPath, "utf-8");
+          const lines = content.split("\n").filter(Boolean);
+
+          for (let i = offset; i < lines.length; i++) {
+            await stream.writeSSE({
+              data: lines[i]!,
+              event: "agent_event",
+              id: String(i),
+            });
+          }
+          if (lines.length > offset) {
+            idleCount = 0;
+          }
+          offset = lines.length;
+        } catch (e) {
+          if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code !== "ENOENT") {
+            console.warn("agent stream read error:", e);
+          }
+        }
+      }
+
+      if (agentStatus !== "running") {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "stream_end",
+            status: agentStatus,
+            error: agentError,
+            trace_file: agentTraceFile,
+            total_events: offset,
+          }),
+          event: "control",
+        });
+        break;
+      }
+
+      idleCount++;
+      if (idleCount >= MAX_IDLE) {
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "stream_timeout" }),
+          event: "control",
+        });
+        break;
+      }
+
+      await stream.sleep(200);
+    }
+  });
+});
+
 app.get("/api/screenshots", (c) => {
   try {
     const entries = fs.readdirSync(SCREENSHOT_DIR);
