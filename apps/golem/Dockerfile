@@ -1,11 +1,11 @@
 FROM golang:1.24 AS modules
 WORKDIR /app
-COPY go.mod go.sum* ./
-RUN go mod download || true
+COPY go.mod go.sum ./
+RUN go mod download
 
 FROM golang:1.24 AS builder
 WORKDIR /app
-COPY --from=modules /go/pkg /go/pkg
+COPY --from=modules /go/pkg/mod /go/pkg/mod
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/golem ./cmd/golem
 

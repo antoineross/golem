@@ -205,6 +205,9 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           script: |
             cat > ~/golem/.env.prod <<'ENVEOF'
+            GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            GCP_LOCATION=${{ secrets.GCP_LOCATION }}
+            GCP_REPOSITORY=${{ secrets.GCP_REPOSITORY }}
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
             DEFAULT_LLM_MODEL=gemini-3-flash-preview
             GOLEM_LOG_LEVEL=info
@@ -213,6 +216,7 @@ jobs:
             DOMAIN=${{ secrets.DOMAIN }}
             ACME_EMAIL=${{ secrets.ACME_EMAIL }}
             ENVEOF
+            sed -i 's/^[[:space:]]*//' ~/golem/.env.prod
             chmod 600 ~/golem/.env.prod
 
       - name: Deploy via SSH
