@@ -209,8 +209,8 @@ func (e *rateLimitError) Error() string {
 func isRetryableError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "429") ||
-		strings.Contains(msg, "500") ||
-		strings.Contains(msg, "503") ||
+		strings.Contains(msg, "Error 500") ||
+		strings.Contains(msg, "Error 503") ||
 		strings.Contains(msg, "RESOURCE_EXHAUSTED") ||
 		strings.Contains(msg, "resource has been exhausted") ||
 		strings.Contains(msg, "Resource has been exhausted") ||
