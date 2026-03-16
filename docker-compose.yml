@@ -56,10 +56,6 @@ services:
       - REDIS_ADDR=redis:6379
       - GOLEM_TRACE_DIR=/data/tmp/tests
       - DEMO_TARGET_URL=http://demo-target:4000
-      - GOLEM_RETRY_MAX=${GOLEM_RETRY_MAX:-5}
-      - GOLEM_RETRY_BASE_DELAY_MS=${GOLEM_RETRY_BASE_DELAY_MS:-2000}
-      - GOLEM_RETRY_MAX_DELAY_MS=${GOLEM_RETRY_MAX_DELAY_MS:-30000}
-      - GOOGLE_API_KEY_BACKUP=${GOOGLE_API_KEY_BACKUP:-}
     env_file:
       - path: .env.example
         required: true
@@ -87,6 +83,7 @@ services:
     environment:
       - TRACE_DIR=/data/tmp/tests
       - SCREENSHOT_DIR=/data/tmp/screenshots
+      - SCRAPER_URL=http://scraper:8081
       - RUNNER_ENABLED=false
       - GOLEM_API_URL=http://golem:8080
       - DEMO_TARGET_URL=http://demo-target:4000
