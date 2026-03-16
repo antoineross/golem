@@ -137,8 +137,8 @@ func TestScanForHidden_Deduplication(t *testing.T) {
 			cssCount++
 		}
 	}
-	if cssCount > 2 {
-		t.Errorf("expected deduplication to limit css_hidden display:none, got %d", cssCount)
+	if cssCount != 2 {
+		t.Errorf("expected 2 css_hidden display:none elements (different positions), got %d", cssCount)
 	}
 }
 
@@ -269,5 +269,22 @@ func TestFindHiddenTool_Integration(t *testing.T) {
 	_, err := NewFindHiddenTool(client)
 	if err != nil {
 		t.Fatalf("NewFindHiddenTool() error: %v", err)
+	}
+
+	// ADK tool.Context cannot be constructed outside the ADK internals,
+	// so we test scanForHidden directly with the mock HTML.
+	elements := scanForHidden(mockHTML)
+	if len(elements) < 5 {
+		t.Errorf("expected at least 5 hidden elements from mock HTML, got %d", len(elements))
+	}
+
+	typesSeen := make(map[string]bool)
+	for _, e := range elements {
+		typesSeen[e.Type] = true
+	}
+	for _, expected := range []string{"css_hidden", "hidden_input", "debug_attr", "debug_code", "html_comment"} {
+		if !typesSeen[expected] {
+			t.Errorf("expected to find type %q in scan results", expected)
+		}
 	}
 }

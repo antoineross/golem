@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -51,7 +52,7 @@ var hiddenPatterns = []hiddenPattern{
 	{regexp.MustCompile(`(?i)data-debug\b`), "debug_attr", "data-debug attribute"},
 	{regexp.MustCompile(`(?i)data-test\b`), "debug_attr", "data-test attribute"},
 	{regexp.MustCompile(`(?i)<!--[\s\S]*?-->`), "html_comment", "HTML comment"},
-	{regexp.MustCompile(`(?i)\bdisabled\b`), "disabled", "disabled element"},
+	{regexp.MustCompile(`(?i)\sdisabled\b`), "disabled", "disabled element"},
 }
 
 // routePatterns detect references to sensitive routes in HTML/JS source.
@@ -82,6 +83,11 @@ func extractContext(html string, matchStart, matchEnd int) string {
 	ctx = strings.ReplaceAll(ctx, "\r", " ")
 	ctx = strings.Join(strings.Fields(ctx), " ")
 
+	const maxContextLen = 300
+	if utf8.RuneCountInString(ctx) > maxContextLen {
+		ctx = truncateUTF8(ctx, maxContextLen)
+	}
+
 	if start > 0 {
 		ctx = "..." + ctx
 	}
@@ -92,16 +98,20 @@ func extractContext(html string, matchStart, matchEnd int) string {
 }
 
 func scanForHidden(html string) []hiddenElement {
+	const maxElements = 50
+
 	var results []hiddenElement
 	seen := make(map[string]bool)
 
 	allPatterns := append(hiddenPatterns, routePatterns...)
 
 	for _, p := range allPatterns {
-		matches := p.Pattern.FindAllStringIndex(html, -1)
+		if len(results) >= maxElements {
+			break
+		}
+		matches := p.Pattern.FindAllStringIndex(html, maxElements-len(results))
 		for _, loc := range matches {
-			matchText := html[loc[0]:loc[1]]
-			key := fmt.Sprintf("%s:%s", p.Type, matchText)
+			key := fmt.Sprintf("%s:%d:%d", p.Type, loc[0], loc[1])
 			if seen[key] {
 				continue
 			}
@@ -113,12 +123,11 @@ func scanForHidden(html string) []hiddenElement {
 				Type:     p.Type,
 				Context:  ctx,
 			})
-		}
-	}
 
-	const maxElements = 50
-	if len(results) > maxElements {
-		results = results[:maxElements]
+			if len(results) >= maxElements {
+				break
+			}
+		}
 	}
 
 	return results
@@ -130,9 +139,15 @@ func summarize(elements []hiddenElement) string {
 		counts[e.Type]++
 	}
 
+	types := make([]string, 0, len(counts))
+	for typ := range counts {
+		types = append(types, typ)
+	}
+	sort.Strings(types)
+
 	var parts []string
-	for typ, count := range counts {
-		parts = append(parts, fmt.Sprintf("%s: %d", typ, count))
+	for _, typ := range types {
+		parts = append(parts, fmt.Sprintf("%s: %d", typ, counts[typ]))
 	}
 
 	if len(parts) == 0 {
