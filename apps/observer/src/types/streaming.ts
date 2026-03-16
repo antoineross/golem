@@ -188,7 +188,9 @@ export function reduceStreamEvent(
 
     case "tool_call": {
       const isScreenshotTool = event.tool_name === "screenshot" || event.tool_name === "click";
-      const lastLlmCall = [...state.llmCalls].reverse().find((lc) => lc.state === "pending");
+      const lastLlmCall = state.llmCalls.length > 0
+        ? state.llmCalls[state.llmCalls.length - 1]
+        : undefined;
       const toolCall: StreamingToolCall = {
         id: `tool-${next.toolCalls.length}`,
         name: event.tool_name ?? "unknown",

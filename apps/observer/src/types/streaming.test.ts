@@ -405,6 +405,8 @@ describe("reduceStreamEvent", () => {
     expect(s.toolCalls[0]!.state).toBe("output-available");
     expect(s.toolCalls[1]!.state).toBe("output-available");
     expect(s.toolCalls[1]!.screenshotUrl).toBe("/shot.png");
+    expect(s.toolCalls[0]!.parentLlmCallId).toBe("llm-0");
+    expect(s.toolCalls[1]!.parentLlmCallId).toBe("llm-0");
     expect(s.llmCalls).toHaveLength(2);
     expect(s.llmCalls[0]!.state).toBe("completed");
     expect(s.llmCalls[1]!.state).toBe("completed");
