@@ -1,6 +1,7 @@
 package supacrawl
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -178,7 +179,7 @@ func (c *Client) createScreenshot(ctx context.Context, req ScreenshotRequest) (*
 	}
 
 	endpoint := fmt.Sprintf("%s/v1/screenshots", c.baseURL)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(payload)))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build screenshot request: %w", err)
 	}

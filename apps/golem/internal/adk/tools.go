@@ -2,7 +2,9 @@ package adk
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"golem/internal/supacrawl"
 
@@ -60,19 +62,23 @@ func NewBrowseTool(client *supacrawl.Client) (tool.Tool, error) {
 			return browseResult{}, fmt.Errorf("browse %s: %w", args.URL, err)
 		}
 
+		if err := stateAppendString(tc.State(), StateKeyVisitedURLs, args.URL); err != nil {
+			slog.Warn("failed to update visited_urls state", "url", args.URL, "error", err)
+		}
+
 		links := resp.Links
 		if len(links) > 50 {
 			links = links[:50]
 		}
 
 		content := resp.Content
-		if len(content) > 8000 {
-			content = content[:8000] + "\n... [truncated]"
+		if utf8.RuneCountInString(content) > 8000 {
+			content = truncateUTF8(content, 8000) + "\n... [truncated]"
 		}
 
 		html := resp.HTML
-		if len(html) > 8000 {
-			html = html[:8000] + "\n... [truncated]"
+		if utf8.RuneCountInString(html) > 8000 {
+			html = truncateUTF8(html, 8000) + "\n... [truncated]"
 		}
 
 		return browseResult{
@@ -125,6 +131,10 @@ func NewScreenshotTool(client *supacrawl.Client) (tool.Tool, error) {
 		})
 		if err != nil {
 			return screenshotResult{}, fmt.Errorf("screenshot %s: %w", args.URL, err)
+		}
+
+		if err := stateAppendString(tc.State(), StateKeyScreenshots, resp.Screenshot); err != nil {
+			slog.Warn("failed to update screenshots state", "url", args.URL, "error", err)
 		}
 
 		width, height, format := 0, 0, "png"
@@ -185,6 +195,13 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 			return clickResult{}, fmt.Errorf("click %s on %s: %w", args.Selector, args.URL, err)
 		}
 
+		if err := stateAppendString(tc.State(), StateKeyVisitedURLs, args.URL); err != nil {
+			slog.Warn("failed to update visited_urls state", "url", args.URL, "error", err)
+		}
+		if err := stateAppendString(tc.State(), StateKeyScreenshots, screenshotResp.Screenshot); err != nil {
+			slog.Warn("failed to update screenshots state", "url", args.URL, "error", err)
+		}
+
 		scrapeResp, scrapeErr := client.Scrape(tc, args.URL, supacrawl.ScrapeOptions{
 			Format: "markdown",
 			Fresh:  true,
@@ -195,8 +212,8 @@ func NewClickTool(client *supacrawl.Client) (tool.Tool, error) {
 			content = fmt.Sprintf("[scrape after click failed: %v]", scrapeErr)
 		} else if scrapeResp != nil {
 			content = scrapeResp.Content
-			if len(content) > 4000 {
-				content = content[:4000] + "\n... [truncated]"
+			if utf8.RuneCountInString(content) > 4000 {
+				content = truncateUTF8(content, 4000) + "\n... [truncated]"
 			}
 		}
 

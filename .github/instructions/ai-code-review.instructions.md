@@ -208,9 +208,12 @@ Note: `.gemini/styleguide.md` restricts Gemini Code Assist automated reviews to 
 |-------|------------------|
 | Missing error handling | `_ = ` ignoring errors |
 | Silent failure paths | Error swallowed, empty result returned |
+| Callback passthrough | `AfterModel` must return `(resp, respErr)`, not `(nil, nil)` |
 | `context.Background()` in tools | Should use tool.Context (embeds context.Context) |
 | Hardcoded values | Magic numbers, URLs, credentials |
 | Missing validation | User input used directly |
+| Byte vs rune mismatch | `len(s)` counts bytes; `utf8.RuneCountInString(s)` counts runes. Use consistent units. |
+| Unbounded prompt injection | Session state injected into prompts must be capped to prevent token explosion |
 | Over-engineering | Abstractions without clear benefit |
 | Under-testing | Only happy path tests |
 | Committed build artifacts | Binaries, `*.test`, local executables |

@@ -20,6 +20,7 @@ Monorepo layout:
 - `apps/golem/` -- the agent (own go.mod)
   - `cmd/golem/main.go` -- entry point, wiring, event loop
   - `internal/adk/` -- model factory, runner setup, agent config, ADK tool definitions
+  - `internal/adk/prompts/` -- modular system prompt sections (base, personas, methodology, tools, rules)
   - `internal/supacrawl/` -- HTTP client for scraper API (scrape, screenshot, health)
   - `internal/perception/` -- state mapping, hidden element detection (planned)
   - `internal/security/` -- attack trees, payload engineering (planned)
@@ -29,6 +30,33 @@ Monorepo layout:
   - LightPanda browser automation, Redis task queue
 
 Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusive. Because this agent uses tools, structured output must use the Regex Parser pattern.
+
+### ADK features in use
+
+| Feature | Implementation | Purpose |
+|---------|---------------|---------|
+| `InstructionProvider` | `agent.go` | Dynamic prompt with session state injection |
+| Session state | `state.go` + tools | Track visited URLs, screenshots, findings across tool calls |
+| `artifact.InMemoryService` | `runner.go` | Screenshot persistence (wired, save calls deferred to v0.7) |
+| Lifecycle callbacks | `callbacks.go` | Structured logging of agent/model events |
+| Functional options | `agent.go` | `WithBeforeAgent`, `WithAfterAgent`, `WithBeforeModel`, `WithAfterModel` |
+
+### session state keys
+
+| Key | Type | Written by | Read by |
+|-----|------|-----------|---------|
+| `target_url` | string | main (planned) | InstructionProvider |
+| `current_step` | string | agent (planned) | InstructionProvider |
+| `visited_urls` | []string | browse, click | InstructionProvider, callbacks |
+| `findings` | int | agent (planned) | InstructionProvider, callbacks |
+| `screenshots` | []string | screenshot, click | callbacks |
+
+### callback contract
+
+Callbacks are observation-only hooks. They must not modify agent behavior:
+- `BeforeAgent`/`AfterAgent`: return `(nil, nil)` to continue normally.
+- `BeforeModel`: return `(nil, nil)` to let the model call proceed.
+- `AfterModel`: return `(resp, respErr)` to pass through the original response. Never return `(nil, nil)` -- this suppresses the model response.
 
 ### agent tools
 
