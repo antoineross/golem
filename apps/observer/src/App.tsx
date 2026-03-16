@@ -2,6 +2,12 @@ import { useState, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { SummaryHeader } from "@/components/summary-header";
 import { Timeline } from "@/components/timeline";
 import { RawJsonView } from "@/components/raw-json-view";
@@ -55,52 +61,72 @@ export default function App() {
   const displayEvents = replayMode ? replayEvents : (activeTrace?.events ?? []);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="border-b border-zinc-800 px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border px-6 py-4">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Eye className="h-5 w-5 text-green-400" />
             <h1 className="text-lg font-semibold tracking-tight">
               G.O.L.E.M. Observer
             </h1>
-            <Badge variant="outline" className="text-xs border-zinc-700 text-zinc-400">
+            <Badge variant="outline" className="text-xs">
               v0.7.1
             </Badge>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => { setReplayMode(!replayMode); setLiveEnabled(false); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors ${
-                replayMode
-                  ? "bg-purple-900/50 text-purple-400 border border-purple-700"
-                  : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
-              }`}
-            >
-              {replayMode ? "Replay On" : "Replay"}
-            </button>
-            <button
-              onClick={() => { setLiveEnabled(!liveEnabled); setReplayMode(false); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors ${
-                liveEnabled
-                  ? "bg-green-900/50 text-green-400 border border-green-700"
-                  : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
-              }`}
-            >
-              <span className={`h-2 w-2 rounded-full ${liveEnabled ? "bg-green-400 animate-pulse" : "bg-zinc-600"}`} />
-              {liveEnabled ? "Live" : "Live Off"}
-            </button>
-            <button
-              onClick={reload}
-              className="p-1.5 rounded bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
-              title="Reload trace"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={replayMode ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => { setReplayMode(!replayMode); setLiveEnabled(false); }}
+                    aria-label="Toggle replay mode"
+                  />
+                }
+              >
+                {replayMode ? "Replay On" : "Replay"}
+              </TooltipTrigger>
+              <TooltipContent>Step through events at custom speed</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={liveEnabled ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => { setLiveEnabled(!liveEnabled); setReplayMode(false); }}
+                    aria-label="Toggle live mode"
+                  />
+                }
+              >
+                <span className={`h-2 w-2 rounded-full ${liveEnabled ? "bg-green-400 animate-pulse" : "bg-muted-foreground/40"}`} />
+                {liveEnabled ? "Live" : "Live Off"}
+              </TooltipTrigger>
+              <TooltipContent>Stream trace updates in real-time</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={reload}
+                    aria-label="Reload trace"
+                  />
+                }
+              >
+                <RefreshCw className="h-4 w-4" />
+              </TooltipTrigger>
+              <TooltipContent>Reload current trace</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-4 space-y-4">
+      <main className="max-w-[1600px] mx-auto px-6 py-4 space-y-4">
         <ScenarioLauncher onRunStarted={handleRunStarted} />
 
         {!filesLoading && files.length > 0 && (
@@ -110,19 +136,19 @@ export default function App() {
               selected={selectedFile}
               onSelect={handleFileSelect}
             />
-            <Separator className="bg-zinc-800" />
+            <Separator />
           </>
         )}
 
         {loading && (
           <div className="space-y-4">
-            <Skeleton className="h-20 w-full bg-zinc-800" />
-            <Skeleton className="h-64 w-full bg-zinc-800" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-64 w-full" />
           </div>
         )}
 
         {error && (
-          <div className="rounded border border-red-800 bg-red-950/50 p-4 text-red-400 text-sm">
+          <div className="rounded border border-destructive bg-destructive/10 p-4 text-destructive text-sm">
             Failed to load trace: {error}
           </div>
         )}
@@ -139,7 +165,7 @@ export default function App() {
             )}
 
             <Tabs defaultValue="timeline" className="w-full">
-              <TabsList className="bg-zinc-900 border border-zinc-800">
+              <TabsList>
                 <TabsTrigger value="timeline">Timeline</TabsTrigger>
                 <TabsTrigger value="raw">Raw JSON</TabsTrigger>
                 <TabsTrigger value="screenshots">Screenshots</TabsTrigger>
@@ -158,7 +184,7 @@ export default function App() {
         )}
 
         {!loading && !error && !activeTrace && (
-          <div className="text-center py-16 text-zinc-500">
+          <div className="text-center py-16 text-muted-foreground">
             <Eye className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p className="text-lg">Select a trace file or run a scenario</p>
             <p className="text-sm mt-1">

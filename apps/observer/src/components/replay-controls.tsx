@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { Play, Pause, RotateCcw } from "lucide-react";
 import type { TimelineEvent } from "@/types/trace";
 
@@ -87,47 +94,58 @@ export function ReplayControls({ events, onVisibleEvents }: ReplayControlsProps)
 
   return (
     <div className="flex items-center gap-3">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={togglePlay}
-        className="text-xs border-zinc-700 hover:bg-zinc-800"
-      >
-        {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={reset}
-        className="text-xs border-zinc-700 hover:bg-zinc-800"
-      >
-        <RotateCcw className="h-3 w-3" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={togglePlay}
+              aria-label={playing ? "Pause replay" : "Play replay"}
+            />
+          }
+        >
+          {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+        </TooltipTrigger>
+        <TooltipContent>{playing ? "Pause" : "Play"}</TooltipContent>
+      </Tooltip>
 
-      <div className="flex gap-1">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={reset}
+              aria-label="Reset replay"
+            />
+          }
+        >
+          <RotateCcw className="h-3 w-3" />
+        </TooltipTrigger>
+        <TooltipContent>Reset to start</TooltipContent>
+      </Tooltip>
+
+      <ToggleGroup
+        value={[String(speed)]}
+        onValueChange={(val) => {
+          if (val.length > 0) setSpeed(Number(val[val.length - 1]));
+        }}
+        variant="outline"
+        size="sm"
+      >
         {SPEED_OPTIONS.map((s) => (
-          <button
-            key={s}
-            onClick={() => setSpeed(s)}
-            className={`px-1.5 py-0.5 rounded text-[10px] transition-colors ${
-              speed === s
-                ? "bg-zinc-700 text-zinc-100"
-                : "bg-zinc-900 text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
+          <ToggleGroupItem key={s} value={String(s)} aria-label={`${s}x speed`}>
             {s}x
-          </button>
+          </ToggleGroupItem>
         ))}
+      </ToggleGroup>
+
+      <div className="flex-1">
+        <Progress value={progress} />
       </div>
 
-      <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-green-500 rounded-full transition-all duration-200"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-
-      <Badge variant="outline" className="text-[10px] border-zinc-700 text-zinc-400">
+      <Badge variant="outline" className="text-[10px] tabular-nums">
         {currentIndex}/{totalEvents}
       </Badge>
     </div>

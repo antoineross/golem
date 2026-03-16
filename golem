@@ -177,6 +177,14 @@ Commands:
 EOF
 }
 
+is_golem_process() {
+  local pid="$1"
+  kill -0 "${pid}" 2>/dev/null || return 1
+  local cmd
+  cmd="$(ps -p "${pid}" -o args= 2>/dev/null)" || return 1
+  [[ "${cmd}" == *"golem"* || "${cmd}" == *"go run"* ]]
+}
+
 cmd_start() {
   check_go
   check_env
@@ -186,10 +194,11 @@ cmd_start() {
   if [[ -f "${PID_FILE}" ]]; then
     local existing_pid
     existing_pid=$(<"${PID_FILE}")
-    if kill -0 "${existing_pid}" 2>/dev/null; then
+    if is_golem_process "${existing_pid}"; then
       log_warn "golem is already running (pid ${existing_pid})"
       return
     fi
+    log_info "cleaning stale pid file (pid ${existing_pid} is not golem)"
     rm -f "${PID_FILE}"
   fi
 
@@ -214,11 +223,11 @@ cmd_stop() {
 
   local pid
   pid=$(<"${PID_FILE}")
-  if kill -0 "${pid}" 2>/dev/null; then
+  if is_golem_process "${pid}"; then
     kill "${pid}"
     log_ok "golem stopped (pid ${pid})"
   else
-    log_warn "golem process ${pid} not found; cleaning up pid file"
+    log_warn "golem process ${pid} not found or not golem; cleaning up pid file"
   fi
   rm -f "${PID_FILE}"
 }
@@ -231,7 +240,7 @@ cmd_status() {
 
   local pid
   pid=$(<"${PID_FILE}")
-  if kill -0 "${pid}" 2>/dev/null; then
+  if is_golem_process "${pid}"; then
     echo "golem: running (pid ${pid})"
   else
     echo "golem: not running (stale pid file)"

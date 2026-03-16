@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ImageIcon } from "lucide-react";
 
-const API_BASE = import.meta.env.DEV ? "http://localhost:3001" : "";
+const API_BASE = import.meta.env.DEV ? "http://localhost:3000" : "";
 
 export function ScreenshotGallery() {
   const [screenshots, setScreenshots] = useState<string[]>([]);
@@ -19,13 +20,19 @@ export function ScreenshotGallery() {
   }, []);
 
   if (loading) {
-    return <div className="p-8 text-center text-zinc-500">Loading screenshots...</div>;
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-48 w-full" />
+        ))}
+      </div>
+    );
   }
 
   if (screenshots.length === 0) {
     return (
-      <Card className="border-zinc-800 bg-zinc-950">
-        <CardContent className="p-8 text-center text-zinc-500">
+      <Card>
+        <CardContent className="p-8 text-center text-muted-foreground">
           <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
           <p>No screenshots found.</p>
           <p className="text-xs mt-1">Run the agent with screenshot tool to capture images.</p>
@@ -37,7 +44,7 @@ export function ScreenshotGallery() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {screenshots.map((name) => (
-        <Card key={name} className="border-zinc-800 bg-zinc-950 overflow-hidden">
+        <Card key={name} className="overflow-hidden">
           <img
             src={`${API_BASE}/api/screenshots/${name}`}
             alt={name}
@@ -45,7 +52,7 @@ export function ScreenshotGallery() {
             loading="lazy"
           />
           <CardContent className="p-2">
-            <span className="text-xs text-zinc-400 truncate block">{name}</span>
+            <span className="text-xs text-muted-foreground truncate block">{name}</span>
           </CardContent>
         </Card>
       ))}

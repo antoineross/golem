@@ -11,7 +11,7 @@ const TRACE_FILE = path.resolve(SCRIPT_DIR, process.env.TRACE_FILE ?? "../../tmp
 const TRACE_DIR = path.resolve(SCRIPT_DIR, process.env.TRACE_DIR ?? "../../tmp/tests");
 const SCREENSHOT_DIR = path.resolve(SCRIPT_DIR, process.env.SCREENSHOT_DIR ?? "../../tmp/screenshots");
 const REPO_ROOT = path.resolve(SCRIPT_DIR, process.env.REPO_ROOT ?? "../../");
-const PORT = parseInt(process.env.PORT ?? "3001", 10);
+const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
 type AgentStatus = "idle" | "running" | "complete" | "error";
 let agentStatus: AgentStatus = "idle";

@@ -54,7 +54,7 @@ services:
   observer:
     build: apps/observer
     ports:
-      - "3001:3001"
+      - "3000:3000"
     volumes:
       - ./tmp:/data/tmp:ro
     environment:

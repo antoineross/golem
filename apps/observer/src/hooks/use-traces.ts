@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { TraceSummary, TraceFile } from "@/types/trace";
 import { parseTrace } from "@/lib/parse-trace";
 
-const API_BASE = import.meta.env.DEV ? "http://localhost:3001" : "";
+const API_BASE = import.meta.env.DEV ? "http://localhost:3000" : "";
 
 export function useTraceList() {
   const [files, setFiles] = useState<TraceFile[]>([]);

@@ -32,7 +32,7 @@ describe("TracePicker", () => {
       <TracePicker files={files} selected={files[0].path} onSelect={() => {}} />
     );
     const buttons = container.querySelectorAll("button");
-    expect(buttons[0].className).toContain("bg-zinc-700");
-    expect(buttons[1].className).not.toContain("bg-zinc-700");
+    expect(buttons[0].className).toContain("bg-secondary");
+    expect(buttons[1].className).not.toContain("bg-secondary");
   });
 });

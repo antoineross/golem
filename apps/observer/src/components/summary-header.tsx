@@ -1,6 +1,11 @@
 import type { TraceSummary } from "@/types/trace";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { Clock, Cpu, MessageSquare, Wrench, Brain } from "lucide-react";
 
 interface SummaryHeaderProps {
@@ -14,7 +19,7 @@ export function SummaryHeader({ trace }: SummaryHeaderProps) {
   };
 
   return (
-    <Card className="border-zinc-800 bg-zinc-950">
+    <Card>
       <CardContent className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-6">
         <Stat
           icon={<Cpu className="h-4 w-4 text-blue-400" />}
@@ -34,18 +39,27 @@ export function SummaryHeader({ trace }: SummaryHeaderProps) {
           value={formatDuration(trace.total_duration_ms)}
         />
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Tokens</span>
+          <span className="text-xs text-muted-foreground">Tokens</span>
           <div className="flex flex-wrap gap-1">
-            <Badge variant="outline" className="text-xs border-zinc-700">
-              in: {trace.tokens.input.toLocaleString()}
-            </Badge>
-            <Badge variant="outline" className="text-xs border-zinc-700">
-              out: {trace.tokens.output.toLocaleString()}
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger render={<Badge variant="outline" className="text-xs" />}>
+                in: {trace.tokens.input.toLocaleString()}
+              </TooltipTrigger>
+              <TooltipContent>Input tokens sent to model</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger render={<Badge variant="outline" className="text-xs" />}>
+                out: {trace.tokens.output.toLocaleString()}
+              </TooltipTrigger>
+              <TooltipContent>Output tokens generated</TooltipContent>
+            </Tooltip>
             {trace.tokens.thoughts > 0 && (
-              <Badge variant="outline" className="text-xs border-purple-700 text-purple-400">
-                think: {trace.tokens.thoughts.toLocaleString()}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger render={<Badge variant="outline" className="text-xs text-purple-400" />}>
+                  think: {trace.tokens.thoughts.toLocaleString()}
+                </TooltipTrigger>
+                <TooltipContent>Thinking/reasoning tokens</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -77,9 +91,9 @@ function Stat({
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         {icon}
-        <span className="text-xs text-zinc-500">{label}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
-      <span className="text-sm font-medium text-zinc-200 truncate">{value}</span>
+      <span className="text-sm font-medium truncate">{value}</span>
     </div>
   );
 }

@@ -39,8 +39,8 @@ const typeConfig: Record<
     badge: "Agent",
   },
   text: {
-    color: "text-zinc-400",
-    borderColor: "border-l-zinc-500",
+    color: "text-muted-foreground",
+    borderColor: "border-l-muted",
     icon: <FileText className="h-4 w-4" />,
     badge: "Text",
   },
@@ -53,8 +53,8 @@ interface TimelineProps {
 export function Timeline({ events }: TimelineProps) {
   if (events.length === 0) {
     return (
-      <Card className="border-zinc-800 bg-zinc-950">
-        <CardContent className="p-8 text-center text-zinc-500">
+      <Card>
+        <CardContent className="p-8 text-center text-muted-foreground">
           No events found in this trace.
         </CardContent>
       </Card>
@@ -87,20 +87,17 @@ function TimelineCard({ event }: { event: TimelineEvent }) {
 
   if (!hasExpandableContent) {
     return (
-      <Card className={`border-zinc-800 bg-zinc-950 border-l-2 ${config.borderColor}`}>
+      <Card className={`border-l-2 ${config.borderColor}`}>
         <CardHeader className="p-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className={config.color}>{config.icon}</span>
-              <Badge
-                variant="outline"
-                className={`text-xs ${config.color} border-zinc-700`}
-              >
+              <Badge variant="outline" className={`text-xs ${config.color}`}>
                 {config.badge}
               </Badge>
-              <CardTitle className="text-sm text-zinc-300">{event.title}</CardTitle>
+              <CardTitle className="text-sm">{event.title}</CardTitle>
             </div>
-            <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {event.tokens && (
                 <span>
                   {event.tokens.input + event.tokens.output} tokens
@@ -118,20 +115,17 @@ function TimelineCard({ event }: { event: TimelineEvent }) {
 
   return (
     <AccordionItem value={event.id} className="border-0">
-      <Card className={`border-zinc-800 bg-zinc-950 border-l-2 ${config.borderColor}`}>
+      <Card className={`border-l-2 ${config.borderColor}`}>
         <AccordionTrigger className="p-3 hover:no-underline">
           <div className="flex items-center justify-between w-full pr-2">
             <div className="flex items-center gap-2">
               <span className={config.color}>{config.icon}</span>
-              <Badge
-                variant="outline"
-                className={`text-xs ${config.color} border-zinc-700`}
-              >
+              <Badge variant="outline" className={`text-xs ${config.color}`}>
                 {config.badge}
               </Badge>
-              <span className="text-sm text-zinc-300">{event.title}</span>
+              <span className="text-sm">{event.title}</span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {event.tokens && (
                 <span>
                   {event.tokens.input + event.tokens.output} tokens
@@ -149,7 +143,7 @@ function TimelineCard({ event }: { event: TimelineEvent }) {
               <ToolCallContent event={event} />
             )}
             {event.text && (
-              <pre className="text-xs text-zinc-400 whitespace-pre-wrap bg-zinc-900 rounded p-3 max-h-96 overflow-y-auto font-mono">
+              <pre className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted rounded p-3 max-h-96 overflow-y-auto font-mono">
                 {event.text}
               </pre>
             )}
@@ -165,16 +159,16 @@ function ToolCallContent({ event }: { event: TimelineEvent }) {
     <div className="space-y-2">
       {event.tool_args && (
         <div>
-          <span className="text-xs font-medium text-zinc-500">Arguments:</span>
-          <pre className="mt-1 text-xs text-green-300 bg-zinc-900 rounded p-2 font-mono overflow-x-auto">
+          <span className="text-xs font-medium text-muted-foreground">Arguments:</span>
+          <pre className="mt-1 text-xs text-green-300 bg-muted rounded p-2 font-mono overflow-x-auto">
             {formatJson(event.tool_args)}
           </pre>
         </div>
       )}
       {event.tool_response && (
         <div>
-          <span className="text-xs font-medium text-zinc-500">Response:</span>
-          <pre className="mt-1 text-xs text-orange-300 bg-zinc-900 rounded p-2 font-mono overflow-x-auto max-h-48 overflow-y-auto">
+          <span className="text-xs font-medium text-muted-foreground">Response:</span>
+          <pre className="mt-1 text-xs text-orange-300 bg-muted rounded p-2 font-mono overflow-x-auto max-h-48 overflow-y-auto">
             {formatJson(event.tool_response)}
           </pre>
         </div>

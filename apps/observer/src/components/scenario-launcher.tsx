@@ -2,9 +2,15 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { Play, Square, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 
-const API_BASE = import.meta.env.DEV ? "http://localhost:3001" : "";
+const API_BASE = import.meta.env.DEV ? "http://localhost:3000" : "";
 
 type AgentStatus = "idle" | "running" | "complete" | "error";
 
@@ -92,72 +98,75 @@ export function ScenarioLauncher({ onRunStarted }: ScenarioLauncherProps) {
   };
 
   const statusIcon: Record<AgentStatus, React.ReactNode> = {
-    idle: <Square className="h-3 w-3 text-zinc-500" />,
-    running: <Loader2 className="h-3 w-3 text-blue-400 animate-spin" />,
-    complete: <CheckCircle2 className="h-3 w-3 text-green-400" />,
-    error: <AlertCircle className="h-3 w-3 text-red-400" />,
+    idle: <Square className="h-3 w-3" />,
+    running: <Loader2 className="h-3 w-3 animate-spin" />,
+    complete: <CheckCircle2 className="h-3 w-3" />,
+    error: <AlertCircle className="h-3 w-3" />,
   };
 
-  const statusColor: Record<AgentStatus, string> = {
-    idle: "border-zinc-700 text-zinc-400",
-    running: "border-blue-700 text-blue-400",
-    complete: "border-green-700 text-green-400",
-    error: "border-red-700 text-red-400",
+  const statusVariant: Record<AgentStatus, "outline" | "secondary" | "default" | "destructive"> = {
+    idle: "outline",
+    running: "secondary",
+    complete: "default",
+    error: "destructive",
   };
 
   return (
-    <Card className="border-zinc-800 bg-zinc-950">
+    <Card>
       <CardHeader className="p-4 pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-zinc-300">
+          <CardTitle className="text-sm font-medium">
             Scenario Launcher
           </CardTitle>
-          <Badge variant="outline" className={`text-xs ${statusColor[status]}`}>
+          <Badge variant={statusVariant[status]} className="text-xs gap-1">
             {statusIcon[status]}
-            <span className="ml-1 capitalize">{status}</span>
+            <span className="capitalize">{status}</span>
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="p-4 pt-2 space-y-3">
         <div className="flex flex-wrap gap-2">
           {Object.entries(scenarios).map(([key, scenario]) => (
-            <Button
-              key={key}
-              variant="outline"
-              size="sm"
-              disabled={status === "running"}
-              onClick={() => runScenario(key)}
-              className="text-xs border-zinc-700 hover:bg-zinc-800"
-            >
-              <Play className="h-3 w-3 mr-1" />
-              {scenario.name}
-            </Button>
+            <Tooltip key={key}>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={status === "running"}
+                    onClick={() => runScenario(key)}
+                  />
+                }
+              >
+                <Play className="h-3 w-3 mr-1" />
+                {scenario.name}
+              </TooltipTrigger>
+              <TooltipContent>Run {scenario.harness} harness</TooltipContent>
+            </Tooltip>
           ))}
         </div>
 
         <div className="flex gap-2">
-          <input
-            type="text"
+          <Input
             placeholder="Custom prompt..."
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runCustom()}
             disabled={status === "running"}
-            className="flex-1 rounded bg-zinc-900 border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+            className="text-sm"
           />
           <Button
             variant="outline"
             size="sm"
             disabled={status === "running" || !customPrompt.trim()}
             onClick={runCustom}
-            className="text-xs border-zinc-700 hover:bg-zinc-800"
           >
             Run
           </Button>
         </div>
 
         {error && (
-          <div className="text-xs text-red-400 bg-red-950/50 border border-red-800 rounded p-2">
+          <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">
             {error}
           </div>
         )}
