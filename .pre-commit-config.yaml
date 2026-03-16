@@ -25,6 +25,13 @@ repos:
         pass_filenames: false
         files: '^\.github/workflows/'
 
+      - id: workflow-permissions
+        name: check reusable workflow permissions
+        language: system
+        entry: bash scripts/check-workflow-permissions.sh
+        pass_filenames: false
+        files: '^\.github/workflows/'
+
       - id: verify-claude-symlink
         name: verify CLAUDE.md symlink
         language: system
