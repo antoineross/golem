@@ -12,6 +12,7 @@ import (
 	"google.golang.org/genai"
 
 	golemAdk "golem/internal/adk"
+	"golem/internal/supacrawl"
 )
 
 func main() {
@@ -28,13 +29,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	echoTool, err := golemAdk.NewEchoTool()
+	tools, err := buildTools()
 	if err != nil {
-		slog.Error("failed to create echo tool", "error", err)
+		slog.Error("failed to create tools", "error", err)
 		os.Exit(1)
 	}
 
-	auditor, err := golemAdk.NewAuditor(llm, []tool.Tool{echoTool})
+	auditor, err := golemAdk.NewAuditor(llm, tools)
 	if err != nil {
 		slog.Error("failed to create auditor agent", "error", err)
 		os.Exit(1)
@@ -55,7 +56,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	prompt := "Use the echo tool to say 'hello from golem'. Then confirm it worked."
+	prompt := "Browse https://example.com and describe what you see."
 	if len(os.Args) > 1 {
 		prompt = os.Args[1]
 	}
@@ -69,32 +70,63 @@ func main() {
 			break
 		}
 
-		if event.Content != nil {
-			for _, part := range event.Content.Parts {
-				if part.FunctionCall != nil {
-					slog.Info("tool call",
-						"tool", part.FunctionCall.Name,
-						"args", part.FunctionCall.Args,
-					)
-				}
-				if part.FunctionResponse != nil {
-					slog.Info("tool response",
-						"tool", part.FunctionResponse.Name,
-						"result", part.FunctionResponse.Response,
-					)
-				}
-				if part.Text != "" {
-					if event.IsFinalResponse() {
-						fmt.Println("\n--- AGENT RESPONSE ---")
-						fmt.Println(part.Text)
-						fmt.Println("--- END ---")
-					} else {
-						slog.Info("agent thinking", "text", part.Text)
-					}
+		if event.Content == nil {
+			continue
+		}
+
+		for _, part := range event.Content.Parts {
+			if part.FunctionCall != nil {
+				slog.Info("tool call",
+					"tool", part.FunctionCall.Name,
+					"args", part.FunctionCall.Args,
+				)
+			}
+			if part.FunctionResponse != nil {
+				slog.Info("tool response",
+					"tool", part.FunctionResponse.Name,
+				)
+			}
+			if part.Text != "" {
+				if event.IsFinalResponse() {
+					fmt.Println("\n--- AGENT RESPONSE ---")
+					fmt.Println(part.Text)
+					fmt.Println("--- END ---")
+				} else {
+					slog.Info("agent thinking", "text", part.Text)
 				}
 			}
 		}
 	}
 
 	slog.Info("agent run complete")
+}
+
+func buildTools() ([]tool.Tool, error) {
+	echoTool, err := golemAdk.NewEchoTool()
+	if err != nil {
+		return nil, fmt.Errorf("create echo tool: %w", err)
+	}
+
+	tools := []tool.Tool{echoTool}
+
+	client, err := supacrawl.NewClient()
+	if err != nil {
+		slog.Warn("supacrawl not configured, running with echo tool only", "error", err)
+		return tools, nil
+	}
+
+	if err := client.Health(context.Background()); err != nil {
+		slog.Warn("supacrawl not reachable, running with echo tool only", "error", err)
+		return tools, nil
+	}
+
+	slog.Info("supacrawl connected", "url", os.Getenv("SUPACRAWL_API_URL"))
+
+	supacrawlTools, err := golemAdk.NewSupacrawlTools(client)
+	if err != nil {
+		return nil, fmt.Errorf("create supacrawl tools: %w", err)
+	}
+
+	tools = append(tools, supacrawlTools...)
+	return tools, nil
 }

@@ -1,6 +1,8 @@
 package adk
 
 import (
+	"fmt"
+
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
@@ -15,7 +17,7 @@ func NewRunner(appName string, rootAgent agent.Agent) (*runner.Runner, session.S
 		SessionService: sessionSvc,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("create runner: %w", err)
 	}
 
 	return r, sessionSvc, nil
