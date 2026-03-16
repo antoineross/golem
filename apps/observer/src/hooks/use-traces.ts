@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { TraceSummary, TraceFile } from "@/types/trace";
-import { parseTrace } from "@/lib/parse-trace";
+import { parseTrace, mergeCompanionEvents } from "@/lib/parse-trace";
 
 const API_BASE = import.meta.env.DEV ? "http://localhost:3000" : "";
 
@@ -46,8 +46,13 @@ export function useTrace(filePath: string | null) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const content = data.content as string;
+        const events = (data.events as string) ?? null;
         setRaw(content);
-        setTrace(parseTrace(content));
+        let parsed = parseTrace(content);
+        if (events) {
+          parsed = mergeCompanionEvents(parsed, events);
+        }
+        setTrace(parsed);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "unknown error");
       } finally {

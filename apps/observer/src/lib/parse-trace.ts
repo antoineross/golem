@@ -326,3 +326,109 @@ export function parseTrace(raw: string): TraceSummary {
   const format = detectTraceFormat(raw);
   return format === "thinking" ? parseThinkingTrace(raw) : parseOtelTrace(raw);
 }
+
+interface CompanionEvent {
+  timestamp: string;
+  type: string;
+  agent?: string;
+  model?: string;
+  response_text?: string;
+  thought_text?: string;
+  is_final?: boolean;
+  tool_name?: string;
+  tool_args?: string;
+  tool_response?: string;
+  screenshot_url?: string;
+}
+
+function parseCompanionEvents(raw: string): CompanionEvent[] {
+  const events: CompanionEvent[] = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      // skip malformed lines
+    }
+  }
+  return events;
+}
+
+export function mergeCompanionEvents(
+  trace: TraceSummary,
+  eventsRaw: string
+): TraceSummary {
+  const companions = parseCompanionEvents(eventsRaw);
+  if (companions.length === 0) return trace;
+
+  const merged = { ...trace, events: [...trace.events] };
+  let companionIdx = 0;
+
+  for (let i = 0; i < merged.events.length; i++) {
+    const ev = merged.events[i]!;
+
+    if (ev.type === "llm_call") {
+      while (companionIdx < companions.length) {
+        const ce = companions[companionIdx]!;
+        if (ce.type === "llm_response" || ce.type === "thought") {
+          companionIdx++;
+          if (ce.type === "llm_response" && ce.response_text) {
+            const label = ce.is_final ? "[Final Response]" : "[Intermediate]";
+            const existing = ev.text ?? "";
+            ev.text =
+              existing +
+              `\n\n${label}\n${ce.response_text}`;
+          }
+          if (ce.type === "thought" && ce.thought_text) {
+            const existing = ev.text ?? "";
+            ev.text =
+              existing + `\n\n[Thought]\n${ce.thought_text}`;
+          }
+          break;
+        }
+        companionIdx++;
+      }
+    }
+
+    if (ev.type === "tool_call" && !ev.screenshot_url) {
+      for (const ce of companions) {
+        if (
+          ce.type === "tool_response" &&
+          ce.tool_name === ev.tool_name &&
+          ce.screenshot_url
+        ) {
+          ev.screenshot_url = ce.screenshot_url;
+          break;
+        }
+      }
+    }
+  }
+
+  const userPrompt = companions.find((c) => c.type === "user_prompt");
+  if (userPrompt?.response_text) {
+    merged.events.unshift({
+      id: "user-prompt",
+      type: "text",
+      title: "User Prompt",
+      timestamp:
+        userPrompt.timestamp ?? merged.events[0]?.timestamp ?? new Date().toISOString(),
+      text: userPrompt.response_text,
+    });
+  }
+
+  const finalResponse = companions.findLast(
+    (c) => c.type === "llm_response" && c.is_final
+  );
+  if (finalResponse?.response_text) {
+    merged.events.push({
+      id: "final-response",
+      type: "text",
+      title: "Final Agent Response",
+      timestamp:
+        finalResponse.timestamp ?? new Date().toISOString(),
+      text: finalResponse.response_text,
+    });
+  }
+
+  return merged;
+}

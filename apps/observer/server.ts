@@ -29,6 +29,21 @@ function readTraceFile(filePath: string): string | null {
   }
 }
 
+function eventsPathForTrace(tracePath: string): string {
+  const ext = path.extname(tracePath);
+  const base = tracePath.slice(0, tracePath.length - ext.length);
+  return base + "_events.jsonl";
+}
+
+function readEventsFile(tracePath: string): string | null {
+  const eventsPath = eventsPathForTrace(tracePath);
+  try {
+    return fs.readFileSync(eventsPath, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
 function detectSource(filePath: string): "otel" | "thinking" {
   try {
     const content = fs.readFileSync(filePath, "utf-8");
@@ -92,7 +107,8 @@ app.get("/api/traces", (c) => {
 app.get("/api/traces/default", (c) => {
   const content = readTraceFile(TRACE_FILE);
   if (!content) return c.json({ error: "default trace file not found" }, 404);
-  return c.json({ content, path: TRACE_FILE });
+  const events = readEventsFile(TRACE_FILE);
+  return c.json({ content, events, path: TRACE_FILE });
 });
 
 app.get("/api/traces/:file{.+}", (c) => {
@@ -105,7 +121,8 @@ app.get("/api/traces/:file{.+}", (c) => {
 
   const content = readTraceFile(filePath);
   if (!content) return c.json({ error: "file not found" }, 404);
-  return c.json({ content, path: filePath });
+  const events = readEventsFile(filePath);
+  return c.json({ content, events, path: filePath });
 });
 
 app.get("/api/traces/stream", (c) => {
