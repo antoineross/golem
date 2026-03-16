@@ -476,7 +476,7 @@ export function mergeCompanionEvents(
           text: parts.join("\n"),
           model: ce.model,
           tokens: ce.input_tokens
-            ? (ce.input_tokens + (ce.output_tokens ?? 0) + (ce.think_tokens ?? 0))
+            ? { input: ce.input_tokens, output: ce.output_tokens ?? 0, thoughts: ce.think_tokens }
             : undefined,
           duration_ms: ce.duration_ms,
         });

@@ -454,8 +454,11 @@ cleanup_old_runs() {
 
   local files
   files=$(find "${dir}" -maxdepth 1 -name "*.json" -not -name "*_events.jsonl" | sort)
+  if [[ -z "${files}" ]]; then
+    return 0
+  fi
   local count
-  count=$(echo "${files}" | grep -c . 2>/dev/null || echo 0)
+  count=$(echo "${files}" | wc -l | tr -d ' ')
 
   if [[ ${count} -gt ${keep} ]]; then
     local to_delete=$((count - keep))
@@ -579,7 +582,7 @@ cmd_e2e() {
       ls -la "${out_dir}/"
       ;;
     level1a)
-      local demo_url="${DEMO_TARGET_URL:-http://localhost:3000}"
+      local demo_url="${DEMO_TARGET_URL:-http://host.docker.internal:4000}"
       local log_file="${out_dir}/level1a_e2e.log"
       local trace_file="${out_dir}/level1a_otel_spans.json"
       local prompt="You are auditing ${demo_url}. This is a Level 1a test: find the floating action button (FAB) on the page, click it, read the support chat history, extract any leaked credentials and hidden URLs. Then navigate to the discovered URL and use the credentials to gain access."
@@ -587,7 +590,7 @@ cmd_e2e() {
       run_harness "level1a" "${log_file}" "${trace_file}" "${prompt}"
       ;;
     level1b)
-      local demo_url="${DEMO_TARGET_URL:-http://localhost:3000}"
+      local demo_url="${DEMO_TARGET_URL:-http://host.docker.internal:4000}"
       local log_file="${out_dir}/level1b_e2e.log"
       local trace_file="${out_dir}/level1b_otel_spans.json"
       local prompt="You are auditing ${demo_url}. This is a Level 1b test: navigate to ${demo_url}/system-health, take a screenshot, analyze the visual content (especially any canvas-rendered alerts), find any hidden API endpoints mentioned in the visual content, then call those endpoints to check for data leaks."
@@ -595,7 +598,7 @@ cmd_e2e() {
       run_harness "level1b" "${log_file}" "${trace_file}" "${prompt}"
       ;;
     level2)
-      local demo_url="${DEMO_TARGET_URL:-http://localhost:3000}"
+      local demo_url="${DEMO_TARGET_URL:-http://host.docker.internal:4000}"
       local log_file="${out_dir}/level2_e2e.log"
       local trace_file="${out_dir}/level2_otel_spans.json"
       local prompt="You are auditing ${demo_url}. This is a Level 2 test: navigate to ${demo_url}/admin, find the 'Delete Database' button. A modal popup will appear blocking it. Close the modal first, then interact with the delete button. Report what happens and any API endpoints discovered."

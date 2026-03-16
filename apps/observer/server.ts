@@ -272,7 +272,7 @@ interface ScenarioConfig {
   requires_scraper: boolean;
 }
 
-const DEMO_TARGET_URL = process.env.DEMO_TARGET_URL ?? "http://localhost:3000";
+const DEMO_TARGET_URL = process.env.DEMO_TARGET_URL ?? "http://host.docker.internal:4000";
 
 const SCENARIOS: Record<string, ScenarioConfig> = {
   level0: {
