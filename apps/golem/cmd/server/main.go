@@ -118,7 +118,11 @@ func main() {
 			hasCustomKey := req.APIKey != ""
 			slog.Info("starting agent run", "prompt", req.Prompt, "trace_file", traceFile, "harness", harness, "custom_key", hasCustomKey)
 
-			cmd := exec.Command("/app/tmp/golem", req.Prompt)
+			cliPath := os.Getenv("GOLEM_CLI_PATH")
+			if cliPath == "" {
+				cliPath = "/app/tmp/golem"
+			}
+			cmd := exec.Command(cliPath, req.Prompt)
 			cmd.Dir = "/app"
 			cmd.Env = append(os.Environ(),
 				"GOLEM_TRACE_FILE="+traceFile,
