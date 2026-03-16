@@ -67,6 +67,7 @@ services:
     environment:
       - TRACE_DIR=/data/tmp/tests
       - SCREENSHOT_DIR=/data/tmp/screenshots
+      - RUNNER_ENABLED=false
     restart: unless-stopped
 
 volumes:

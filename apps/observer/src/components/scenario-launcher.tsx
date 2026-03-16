@@ -44,12 +44,22 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
   const [error, setError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Record<string, Scenario>>({});
   const [customPrompt, setCustomPrompt] = useState("");
+  const [runnerEnabled, setRunnerEnabled] = useState(true);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/agent/scenarios`)
-      .then((r) => r.json())
-      .then((data) => setScenarios(data.scenarios ?? {}))
-      .catch(() => {});
+      .then((r) => {
+        if (!r.ok) throw new Error(`scenarios fetch failed: ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        setScenarios(data.scenarios ?? {});
+        if (data.runner_enabled === false) setRunnerEnabled(false);
+      })
+      .catch((err) => {
+        setRunnerEnabled(false);
+        setError(err instanceof Error ? err.message : "failed to load scenarios");
+      });
   }, []);
 
   const pollStatus = useCallback(() => {
@@ -186,7 +196,7 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
                           <Button
                             variant="default"
                             size="xs"
-                            disabled={status === "running"}
+                            disabled={status === "running" || !runnerEnabled}
                             onClick={() => runScenario(key)}
                             className="w-full"
                           />
@@ -196,7 +206,9 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
                         Run
                       </TooltipTrigger>
                       <TooltipContent>
-                        Start {scenario.harness} harness
+                        {runnerEnabled
+                          ? `Start ${scenario.harness} harness`
+                          : "Runner disabled -- use './golem e2e' from the CLI"}
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -212,18 +224,24 @@ export function ScenarioLauncher({ onRunStarted, onRunComplete }: ScenarioLaunch
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runCustom()}
-            disabled={status === "running"}
+            disabled={status === "running" || !runnerEnabled}
             className="text-xs h-7"
           />
           <Button
             variant="outline"
             size="xs"
-            disabled={status === "running" || !customPrompt.trim()}
+            disabled={status === "running" || !customPrompt.trim() || !runnerEnabled}
             onClick={runCustom}
           >
             Run
           </Button>
         </div>
+
+        {!runnerEnabled && (
+          <div className="text-[10px] text-muted-foreground bg-muted border border-border rounded p-1.5">
+            Runner disabled in this environment. Use <code className="font-mono">./golem e2e &lt;level&gt;</code> from the host CLI. Traces appear here automatically.
+          </div>
+        )}
 
         {error && (
           <div className="text-[10px] text-destructive bg-destructive/10 border border-destructive/20 rounded p-1.5">
