@@ -18,17 +18,30 @@ User Input -> ADK Runner -> Gemini Reasoning -> Tool Call (Supacrawl) -> Visual 
 
 Monorepo layout:
 - `apps/golem/` -- the agent (own go.mod)
-  - `cmd/golem/main.go` -- entry point and wiring
-  - `internal/adk/` -- model factory, runner setup, agent config
-  - `internal/browser/` -- Supacrawl client and browser_action tool
-  - `internal/perception/` -- state mapping, hidden element detection
-  - `internal/security/` -- attack trees, payload engineering
-  - `internal/report/` -- regex-based parser for vulnerability reports
+  - `cmd/golem/main.go` -- entry point, wiring, event loop
+  - `internal/adk/` -- model factory, runner setup, agent config, ADK tool definitions
+  - `internal/supacrawl/` -- HTTP client for scraper API (scrape, screenshot, health)
+  - `internal/perception/` -- state mapping, hidden element detection (planned)
+  - `internal/security/` -- attack trees, payload engineering (planned)
+  - `internal/report/` -- regex-based parser for vulnerability reports (planned)
 - `apps/scraper/` -- Supacrawler perception layer (own go.mod)
   - Provides `/v1/scrape`, `/v1/screenshots` endpoints
   - LightPanda browser automation, Redis task queue
 
 Key constraint (ADK-Go v0.6.0): `OutputSchema` and `Tools` are mutually exclusive. Because this agent uses tools, structured output must use the Regex Parser pattern.
+
+### agent tools
+
+The agent has these tools registered via `functiontool.New`:
+
+| Tool | Purpose | Supacrawl Endpoint |
+|------|---------|--------------------|
+| `echo` | Verify tool-call loop works | none (built-in) |
+| `browse` | Scrape a URL, get markdown + links + metadata | `GET /v1/scrape` |
+| `screenshot` | Take a screenshot, return image URL | `POST + GET /v1/screenshots` |
+| `click` | Click a CSS selector, screenshot + scrape the result | screenshot + scrape |
+
+Tool registration is graceful: if `SUPACRAWL_API_URL` is not set or the scraper is unreachable, the agent starts with `echo` only and logs a warning.
 
 ## tech stack
 
